@@ -1,4 +1,4 @@
-.PHONY: up down seed test demo run-backend run-frontend clean help
+.PHONY: up down migrate seed test demo run-backend run-frontend clean help
 
 help:
 	@echo "DepoSafe - AICTE Regulation Bureau FDR Intelligence Portal"
@@ -6,6 +6,7 @@ help:
 	@echo "Commands:"
 	@echo "  make up            - Launch all services via docker-compose"
 	@echo "  make down          - Stop all docker services"
+	@echo "  make migrate       - Apply Alembic migrations"
 	@echo "  make seed          - Initialize and seed database with synthetic FDRs"
 	@echo "  make test          - Run complete unit, forensic and E2E test suites"
 	@echo "  make demo          - Run 90-second automated demo sequence in terminal"
@@ -18,6 +19,9 @@ up:
 
 down:
 	docker-compose down
+
+migrate:
+	PYTHONPATH=. backend/venv/bin/alembic -c backend/alembic.ini upgrade head
 
 seed:
 	PYTHONPATH=. backend/venv/bin/python3 -c "from backend.app.core.database import SessionLocal; from backend.app.services.seed_service import seed_database_if_empty; db = SessionLocal(); seed_database_if_empty(db); print('Database seeded successfully with authentic synthetic FDRs!')"

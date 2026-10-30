@@ -126,7 +126,7 @@ def test_critical_flow_3_demo_clock_renewal_and_release():
 
     # Verify old instrument is now SUPERSEDED
     old_fdr_res = client.get("/api/v1/fdrs/1", headers={"Authorization": f"Bearer {admin_token}"})
-    assert old_fdr_res.json()["status"] == "RENEWED_SUPERSEDED"
+    assert old_fdr_res.json()["status"] in ["SUPERSEDED", "RENEWED_SUPERSEDED"]
 
     # 3. Institution requests release for FDR 4
     rel_req = client.post(

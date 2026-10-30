@@ -53,6 +53,7 @@ def record_audit_event(
     
     audit_entry = AuditLog(
         sequence_num=sequence_num,
+        previous_hash=prev_hash,
         prev_hash=prev_hash,
         current_hash=current_hash,
         event_type=event_type,

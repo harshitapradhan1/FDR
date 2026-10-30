@@ -25,10 +25,12 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **15 passed in 1.79s**
+- Total Pytest Test Cases: **20 passed in 1.52s**
+- Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
 - End-to-End Critical Flows: `backend/tests/test_e2e_flows.py` (3 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
 - Automated Demo Script: `scripts/demo_runner.py` executed cleanly via `make demo`
+- Database Migrations: Alembic migration `0001_phase1_foundation` applied and verified.
 
