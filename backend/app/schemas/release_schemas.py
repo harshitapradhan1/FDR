@@ -19,3 +19,4 @@ class ReleaseAuthorizationRequest(BaseModel):
     typed_justification: str = Field(..., min_length=10, description="Mandatory typed justification required by Competent Authority")
     release_order_ref: str = Field(..., description="Official AICTE Gazette / Sanction Order Reference")
     remarks: Optional[str] = None
+

@@ -5,17 +5,23 @@ import { Language, translations } from "@/lib/translations";
 import { api } from "@/lib/api";
 import { Header, ROLE_ACCOUNTS } from "@/components/Header";
 import { DashboardView } from "@/components/DashboardView";
+import { InstitutionPortalView } from "@/components/InstitutionPortalView";
+import { VerificationWorkspaceView } from "@/components/VerificationWorkspaceView";
+import { MaturityRenewalView } from "@/components/MaturityRenewalView";
+import { ReleaseManagementView } from "@/components/ReleaseManagementView";
+import { LifecyclePassportView } from "@/components/LifecyclePassportView";
+import { AdminGovernanceView } from "@/components/AdminGovernanceView";
 import { FDRRegistryView } from "@/components/FDRRegistryView";
-import { FDRDetailModal } from "@/components/FDRDetailModal";
 import { RelationshipGraphView } from "@/components/RelationshipGraphView";
 import { AuditLedgerView } from "@/components/AuditLedgerView";
 import { EvaluationHarnessView } from "@/components/EvaluationHarnessView";
-import { RulesConfigView } from "@/components/RulesConfigView";
+import { FDRDetailModal } from "@/components/FDRDetailModal";
 import { CreateFDRModal } from "@/components/CreateFDRModal";
 import { DemoTourModal } from "@/components/DemoTourModal";
+import { DemoModeModal } from "@/components/DemoModeModal";
 import {
-  LayoutDashboard, FileText, GitFork, Lock, Award, BookOpen,
-  Calendar, Shield
+  LayoutDashboard, Building, ShieldCheck, Clock, ShieldAlert,
+  GitFork, Settings, FileText, Lock, Award
 } from "lucide-react";
 
 export default function DepoSafeApp() {
@@ -28,9 +34,11 @@ export default function DepoSafeApp() {
   const [workload, setWorkload] = useState<any>(null);
   const [auditStatus, setAuditStatus] = useState<any>(null);
 
+  const [selectedFdrId, setSelectedFdrId] = useState<number>(1);
   const [selectedFDRDetail, setSelectedFDRDetail] = useState<any>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDemoTourOpen, setIsDemoTourOpen] = useState(false);
+  const [isDemoModeOpen, setIsDemoModeOpen] = useState(false);
 
   const t = translations[lang];
 
@@ -50,7 +58,7 @@ export default function DepoSafeApp() {
   const refreshSystemData = useCallback(async () => {
     try {
       const [clockRes, fdrList, wlRes, auditRes] = await Promise.all([
-        api.getClock().catch(() => ({ current_simulated_date: "2024-04-15" })),
+        api.getClock().catch(() => ({ current_simulated_date: "2026-04-15" })),
         api.getFDRs().catch(() => []),
         api.getWorkload().catch(() => null),
         api.verifyAuditChain().catch(() => null)
@@ -60,10 +68,13 @@ export default function DepoSafeApp() {
       setFdrs(fdrList);
       setWorkload(wlRes);
       setAuditStatus(auditRes);
+      if (fdrList.length > 0 && !selectedFdrId) {
+        setSelectedFdrId(fdrList[0].id);
+      }
     } catch (err) {
       console.error("Data refresh error:", err);
     }
-  }, []);
+  }, [selectedFdrId]);
 
   useEffect(() => {
     initializeAuth().then(() => {
@@ -72,6 +83,7 @@ export default function DepoSafeApp() {
   }, [initializeAuth, refreshSystemData]);
 
   const handleSelectFDR = async (id: number) => {
+    setSelectedFdrId(id);
     try {
       const detail = await api.getFDRDetail(id);
       setSelectedFDRDetail(detail);
@@ -90,7 +102,7 @@ export default function DepoSafeApp() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       
-      {/* Gov-Tech Header with Controllable Demo Clock & Role Switcher */}
+      {/* Gov-Tech Header with Controllable Demo Clock, Role Switcher & Grand Finale Demo Mode */}
       <Header
         lang={lang}
         setLang={setLang}
@@ -98,11 +110,11 @@ export default function DepoSafeApp() {
         setActiveRole={setActiveRole}
         currentSimulatedDate={currentSimulatedDate}
         onClockUpdate={refreshSystemData}
-        onStartDemoTour={() => setIsDemoTourOpen(true)}
+        onStartDemoTour={() => setIsDemoModeOpen(true)}
       />
 
       {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 flex flex-col space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 w-full flex-1 flex flex-col space-y-5">
         
         {/* Navigation Tabs Bar */}
         <div className="bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-1 text-xs font-bold overflow-x-auto">
@@ -116,6 +128,66 @@ export default function DepoSafeApp() {
           >
             <LayoutDashboard className="w-4 h-4" />
             <span>{t.navDashboard}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("institution")}
+            className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
+              activeTab === "institution"
+                ? "bg-aicte-navy text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <Building className="w-4 h-4 text-emerald-400" />
+            <span>{t.navInstitution}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("workspace")}
+            className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
+              activeTab === "workspace"
+                ? "bg-aicte-navy text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-cyan-300" />
+            <span>{t.navWorkspace}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("maturity")}
+            className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
+              activeTab === "maturity"
+                ? "bg-aicte-navy text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <Clock className="w-4 h-4 text-amber-400" />
+            <span>{t.navMaturity}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("release")}
+            className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
+              activeTab === "release"
+                ? "bg-aicte-navy text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-400" />
+            <span>{t.navRelease}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("passport")}
+            className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
+              activeTab === "passport"
+                ? "bg-aicte-navy text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <GitFork className="w-4 h-4" />
+            <span>{t.navPassport}</span>
           </button>
 
           <button
@@ -134,15 +206,15 @@ export default function DepoSafeApp() {
           </button>
 
           <button
-            onClick={() => setActiveTab("graph")}
+            onClick={() => setActiveTab("admin")}
             className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
-              activeTab === "graph"
+              activeTab === "admin"
                 ? "bg-aicte-navy text-white shadow-sm"
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
             }`}
           >
-            <GitFork className="w-4 h-4" />
-            <span>{t.navGraph}</span>
+            <Settings className="w-4 h-4" />
+            <span>{t.navAdmin}</span>
           </button>
 
           <button
@@ -168,18 +240,6 @@ export default function DepoSafeApp() {
             <Award className="w-4 h-4 text-amber-400" />
             <span>{t.navEvaluation}</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab("rules")}
-            className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg transition whitespace-nowrap ${
-              activeTab === "rules"
-                ? "bg-aicte-navy text-white shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>{t.navRules}</span>
-          </button>
         </div>
 
         {/* Tab Content Panes */}
@@ -190,8 +250,62 @@ export default function DepoSafeApp() {
               workload={workload}
               fdrs={fdrs}
               auditStatus={auditStatus}
-              onSelectFDR={handleSelectFDR}
+              onSelectFDR={(id) => {
+                setSelectedFdrId(id);
+                setActiveTab("workspace");
+              }}
               onNavigateTab={(tab) => setActiveTab(tab)}
+            />
+          )}
+
+          {activeTab === "institution" && (
+            <InstitutionPortalView
+              lang={lang}
+              onSelectFDR={(id) => {
+                setSelectedFdrId(id);
+                setActiveTab("workspace");
+              }}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+            />
+          )}
+
+          {activeTab === "workspace" && (
+            <VerificationWorkspaceView
+              lang={lang}
+              selectedFdrId={selectedFdrId}
+              fdrs={fdrs}
+              onSelectFDR={(id) => setSelectedFdrId(id)}
+              activeRole={activeRole}
+            />
+          )}
+
+          {activeTab === "maturity" && (
+            <MaturityRenewalView
+              lang={lang}
+              onSelectFDR={(id) => {
+                setSelectedFdrId(id);
+                setActiveTab("workspace");
+              }}
+            />
+          )}
+
+          {activeTab === "release" && (
+            <ReleaseManagementView
+              lang={lang}
+              onSelectFDR={(id) => {
+                setSelectedFdrId(id);
+                setActiveTab("workspace");
+              }}
+              activeRole={activeRole}
+            />
+          )}
+
+          {activeTab === "passport" && (
+            <LifecyclePassportView
+              lang={lang}
+              selectedFdrId={selectedFdrId}
+              fdrs={fdrs}
+              onSelectFDR={(id) => setSelectedFdrId(id)}
             />
           )}
 
@@ -205,10 +319,11 @@ export default function DepoSafeApp() {
             />
           )}
 
-          {activeTab === "graph" && (
-            <RelationshipGraphView
+          {activeTab === "admin" && (
+            <AdminGovernanceView
               lang={lang}
-              onSelectFDR={handleSelectFDR}
+              currentSimulatedDate={currentSimulatedDate}
+              onClockUpdate={refreshSystemData}
             />
           )}
 
@@ -218,10 +333,6 @@ export default function DepoSafeApp() {
 
           {activeTab === "evaluation" && (
             <EvaluationHarnessView lang={lang} />
-          )}
-
-          {activeTab === "rules" && (
-            <RulesConfigView lang={lang} />
           )}
         </main>
 
@@ -247,17 +358,18 @@ export default function DepoSafeApp() {
         />
       )}
 
-      {/* 90-Second Guided Demo Tour Modal */}
-      {isDemoTourOpen && (
-        <DemoTourModal
+      {/* Scripted Grand Finale Demo Mode Modal */}
+      {isDemoModeOpen && (
+        <DemoModeModal
           lang={lang}
-          onClose={() => setIsDemoTourOpen(false)}
+          onClose={() => setIsDemoModeOpen(false)}
           onSelectTab={(tab) => setActiveTab(tab)}
-          onSelectFDR={handleSelectFDR}
+          onSelectFDR={(id) => setSelectedFdrId(id)}
+          onClockUpdate={refreshSystemData}
         />
       )}
 
-      {/* Gov Footer */}
+      {/* Gov-Tech Accessible Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-4 border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
@@ -265,7 +377,7 @@ export default function DepoSafeApp() {
             <span>&bull; Smart India Hackathon Grand Finale Edition</span>
           </div>
           <div className="text-[11px] text-slate-400">
-            Certified Synthetic Data Only &bull; Cryptographic SHA256 Ledger &bull; Human-in-the-Loop Governance
+            WCAG AA Compliant &bull; Cryptographic SHA-256 Chain &bull; Human-in-the-Loop Regulatory Oversight
           </div>
         </div>
       </footer>

@@ -8,7 +8,13 @@ export const translations = {
     govIndia: "Government of India",
     
     // Navigation
-    navDashboard: "Dashboard & Workload",
+    navDashboard: "AICTE Master Dashboard",
+    navInstitution: "Institution Portal",
+    navWorkspace: "Verification Workspace",
+    navMaturity: "Maturity & Renewal Radar",
+    navRelease: "Release & Refund Lifecycle",
+    navPassport: "Lifecycle Passport",
+    navAdmin: "Admin & Governance",
     navRegistry: "FDR Registry & Review",
     navGraph: "Ecosystem Graph",
     navAudit: "Cryptographic Audit",
@@ -70,7 +76,13 @@ export const translations = {
     govIndia: "भारत सरकार",
     
     // Navigation
-    navDashboard: "डैशबोर्ड एवं कार्यभार",
+    navDashboard: "एआईसीटीई मुख्य डैशबोर्ड",
+    navInstitution: "संस्थान पोर्टल",
+    navWorkspace: "सत्यापन कार्यक्षेत्र (हीरो)",
+    navMaturity: "परिपक्वता एवं नवीनीकरण रडार",
+    navRelease: "विमुक्ति एवं प्रतिदाय प्रबंधन",
+    navPassport: "जीवनचक्र पासपोर्ट",
+    navAdmin: "प्रशासन एवं शासन",
     navRegistry: "एफडीआर पंजी एवं समीक्षा",
     navGraph: "पारिस्थितिकी तंत्र ग्राफ",
     navAudit: "क्रिप्टोग्राफिक ऑडिट लेजर",

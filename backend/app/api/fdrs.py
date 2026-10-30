@@ -4,7 +4,7 @@ import hashlib
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
@@ -39,6 +39,7 @@ from backend.app.services.document_service import (
     create_signed_download_token, verify_signed_download_token
 )
 from backend.app.services.lifecycle_service import build_fdr_lifecycle_passport
+from backend.app.services.evidence_pack_service import generate_fdr_evidence_pack_pdf
 
 router = APIRouter(tags=["FDR Operations"])
 
@@ -622,6 +623,35 @@ def get_lineage_passport(
         )
 
     return build_fdr_lifecycle_passport(db, fdr.id)
+
+
+# --------------------------------------------------------------------------
+# Evidence Pack (ReportLab Automated Dossier PDF)
+# --------------------------------------------------------------------------
+@router.get("/{fdr_id}/evidence-pack")
+def get_fdr_evidence_pack(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You cannot access evidence pack for another institution's FDR"
+        )
+
+    pdf_bytes = generate_fdr_evidence_pack_pdf(db, fdr_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="AICTE_Evidence_Pack_FDR_{fdr_id}.pdf"'
+        }
+    )
 
 
 # --------------------------------------------------------------------------
