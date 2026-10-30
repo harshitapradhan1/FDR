@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: deposafe-db
+    environment:
+      POSTGRES_USER: deposafe_user
+      POSTGRES_PASSWORD: deposafe_password
+      POSTGRES_DB: deposafe_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deposafe_user -d deposafe_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: deposafe-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deposafe-backend
+    environment:
+      - DATABASE_URL=postgresql://deposafe_user:deposafe_password@db:5432/deposafe_db
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_DIR=/app/storage
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deposafe-celery-worker
+    command: celery -A backend.app.services.celery_worker.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://deposafe_user:deposafe_password@db:5432/deposafe_db
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_DIR=/app/storage
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deposafe-celery-beat
+    command: celery -A backend.app.services.celery_worker.celery_app beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://deposafe_user:deposafe_password@db:5432/deposafe_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: deposafe-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+
