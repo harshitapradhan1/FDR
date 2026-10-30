@@ -4,6 +4,7 @@ from celery.schedules import crontab
 from datetime import date
 from backend.app.core.database import SessionLocal
 from backend.app.services.workload_service import evaluate_lifecycle_and_workload
+from backend.app.services.maturity_radar import run_maturity_radar_scan
 from backend.app.services.audit_service import record_audit_event
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -34,6 +35,7 @@ def evaluate_maturities_job():
     try:
         workload = evaluate_lifecycle_and_workload(db)
         summary = workload["summary"]
+        radar_summary = run_maturity_radar_scan(db)
         
         record_audit_event(
             db=db,
@@ -45,10 +47,12 @@ def evaluate_maturities_job():
             payload={
                 "matured_overdue": summary["matured_overdue"],
                 "critical_escalation_t15": summary["critical_escalation_t15"],
-                "warning_due_soon_t30": summary["warning_due_soon_t30"]
+                "warning_due_soon_t30": summary["warning_due_soon_t30"],
+                "radar_notifications_count": radar_summary["notifications_generated_count"],
+                "radar_escalations_count": radar_summary["escalations_count"]
             }
         )
-        return summary
+        return {"workload": summary, "radar": radar_summary}
     finally:
         db.close()
 

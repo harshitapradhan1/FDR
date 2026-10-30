@@ -1,0 +1,47 @@
+# ==============================================================================
+# DEPOSAFE MATURITY RADAR & ESCALATION CONFIGURATION
+# Admin-configurable reminder schedules, escalation matrix, and mock SMTP settings
+# ==============================================================================
+
+maturity_radar:
+  schedule_ladder_days:
+    - 90  # T-90: Early Reminder Notice
+    - 60  # T-60: Advance Renewal Window
+    - 30  # T-30: Critical Renewal Window (Status flips to RENEWAL_DUE)
+    - 15  # T-15: Urgent Warning & Assigned Officer Escalation
+    - 7   # T-7: Final Notice & Regional Officer Escalation
+    - 0   # T-0: Due Today
+    - -1  # Overdue: Competent Authority Senior Escalation
+
+  escalation_matrix:
+    t_90:
+      recipient_roles: ["INSTITUTION_USER"]
+      channel: "IN_APP_AND_EMAIL"
+      urgency: "NORMAL"
+    t_60:
+      recipient_roles: ["INSTITUTION_USER"]
+      channel: "IN_APP_AND_EMAIL"
+      urgency: "NORMAL"
+    t_30:
+      recipient_roles: ["INSTITUTION_USER", "VERIFICATION_OFFICER"]
+      channel: "IN_APP_AND_EMAIL"
+      urgency: "HIGH"
+    t_15:
+      recipient_roles: ["INSTITUTION_USER", "VERIFICATION_OFFICER"]
+      channel: "IN_APP_AND_EMAIL"
+      urgency: "HIGH"
+    t_7:
+      recipient_roles: ["INSTITUTION_USER", "VERIFICATION_OFFICER", "REGIONAL_OFFICER"]
+      channel: "IN_APP_AND_EMAIL"
+      urgency: "CRITICAL"
+    overdue:
+      recipient_roles: ["INSTITUTION_USER", "VERIFICATION_OFFICER", "REGIONAL_OFFICER", "COMPETENT_AUTHORITY"]
+      channel: "IN_APP_AND_EMAIL"
+      urgency: "CRITICAL"
+
+mock_smtp:
+  enabled: true
+  sender_address: "no-reply.deposafe@aicte-india.org"
+  sender_name: "AICTE DepoSafe Regulation Bureau"
+  simulated_delivery_latency_ms: 12
+  require_acknowledgement: true

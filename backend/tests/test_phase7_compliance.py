@@ -202,3 +202,4 @@ def test_compliance_scoring_per_institution_and_per_instrument():
     inst_token = get_inst_token()
     res_forbidden = client.get("/api/v1/compliance/institution/99/score", headers={"Authorization": f"Bearer {inst_token}"})
     assert res_forbidden.status_code == 403
+

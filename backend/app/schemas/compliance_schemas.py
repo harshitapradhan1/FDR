@@ -90,3 +90,4 @@ class InstitutionComplianceScore(BaseModel):
     needs_review_instruments: int
     overall_compliance_percentage: float
     breakdown_by_instrument: List[Dict[str, Any]]
+

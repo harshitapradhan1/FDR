@@ -25,7 +25,7 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **48 passed in 3.80s**
+- Total Pytest Test Cases: **53 passed in 5.01s**
 - Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
@@ -35,6 +35,7 @@
 - Phase 5 Dual-Truth Ledger Tests: `backend/tests/test_phase5_dual_truth.py` (5 passed)
 - Phase 6 Anomaly & Forensics Tests: `backend/tests/test_phase6_anomaly.py` (5 passed)
 - Phase 7 Deterministic Compliance Tests: `backend/tests/test_phase7_compliance.py` (5 passed)
+- Phase 8 Proactive Lifecycle Automation Tests: `backend/tests/test_phase8_automation.py` (5 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
 - Automated Demo Scripts: `scripts/demo_runner.py` and `scripts/demo_phase5_verification.py` executed cleanly
 - Database Migrations: Alembic migrations `0001_phase1_foundation` and `0002_phase5_dual_truth` applied and verified.
@@ -203,6 +204,36 @@
 - **Empirical Metrics**:
   - Benchmark harness `scripts/benchmark_compliance.py` generated `docs/metrics/compliance.md`.
   - 100% deterministic accuracy on 164 instruments across all 6 rule types.
+
+---
+
+### 9. Phase 8 Completion: Proactive Lifecycle Automation & Predictive Intelligence
+- **Maturity Radar Service (`backend/app/services/maturity_radar.py`)**:
+  - Daily & automated scan evaluates configurable reminder ladder: `T-90, T-60, T-30, T-15, T-7, T-0, Overdue`.
+  - Configurable admin schedules in `config/radar_config.yaml`.
+  - Multi-tier dynamic escalation: Institution User &rarr; Verification Officer &rarr; Regional Officer &rarr; Competent Authority.
+  - Mock SMTP delivery simulator with delivery timestamps and recipient acknowledgement tracking (`POST /lifecycle/radar/notifications/{id}/acknowledge`).
+  - Seamlessly evaluates against the controllable `DemoClock`.
+- **Non-Destructive Renewal Workflow (`backend/app/api/lifecycle.py`)**:
+  - Automatic comparison endpoint (`POST /lifecycle/renewal/{id}/compare`) checking amount deltas, bank changes, validity extensions, and continuity.
+  - Officer approval/rejection endpoint (`POST /lifecycle/renewal/{id}/decision`): upon approval, predecessor FDR is marked `RENEWED_SUPERSEDED` while the replacement instrument becomes `ACTIVE`.
+  - Zero data loss: complete cryptographic audit trail and parent/child linkage maintained.
+- **Zero-Gap Regulatory Guard (`backend/app/services/renewal_guard.py`)**:
+  - Evaluates continuity between predecessor maturity and successor issue dates.
+  - Detects cover lapses (old FDR matured with no approved replacement) and computes exact gap days.
+  - Categorizes severity into `CRITICAL` (> 30 days gap) and `HIGH` (1 to 30 days gap).
+- **Smart Renewal Priority Queue (`compute_smart_renewal_priority_queue`)**:
+  - Prioritizes active renewal cases into `CRITICAL`, `HIGH`, and `NORMAL` urgency with clear transparent contributing factors (days to maturity, cover gap status, missing bank confirmation letter, review score).
+- **Predictive Scrutiny Intelligence (`backend/app/services/predictive_intelligence.py`)**:
+  - scikit-learn based machine learning forecaster (`StandardScaler`, `LogisticRegression`).
+  - Workload projection across 30, 60, and 90-day windows.
+  - Late-renewal propensity prediction per deposit instrument with top feature attribution.
+  - Statutory advisory label: *"Statistical forecast for resource planning, advisory only. Not a compliance determination."*
+- **FDR Expiry & Maturity Calendar API**:
+  - `GET /lifecycle/calendar/maturities` returns chronological calendar events with date filters and institution scoping.
+- **Empirical Metrics**:
+  - Evaluation harness `scripts/benchmark_alerts.py` generated `docs/metrics/alerts.md`.
+
 
 
 

@@ -6,6 +6,7 @@ from backend.app.models.deposafe_models import User, UserRole
 from backend.app.schemas.deposafe_schemas import DemoClockAdvance, DemoClockSet
 from backend.app.services.demo_clock import get_simulated_today, advance_demo_clock, set_demo_clock_date
 from backend.app.services.workload_service import evaluate_lifecycle_and_workload
+from backend.app.services.maturity_radar import run_maturity_radar_scan
 
 router = APIRouter(prefix="/demo-clock", tags=["Demo Simulation Clock"])
 
@@ -32,10 +33,16 @@ def advance_clock(
     )
     # Immediately evaluate workload and status transitions
     workload = evaluate_lifecycle_and_workload(db)
+    # Trigger automated maturity radar scan and escalations
+    radar_res = run_maturity_radar_scan(db)
     return {
         "message": f"Demo clock successfully advanced by {req.days} days.",
         "new_simulated_date": new_date.isoformat(),
-        "workload_summary": workload["summary"]
+        "workload_summary": workload["summary"],
+        "radar_scan": {
+            "notifications_generated": radar_res["notifications_generated_count"],
+            "escalations_count": radar_res["escalations_count"]
+        }
     }
 
 @router.post("/set")
