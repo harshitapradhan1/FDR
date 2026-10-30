@@ -261,3 +261,4 @@ if __name__ == "__main__":
         load_synthetic_data_into_db(db)
     finally:
         db.close()
+

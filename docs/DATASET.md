@@ -135,3 +135,4 @@ $$\text{Precision} = \frac{TP}{TP + FP}, \quad \text{Recall} = \frac{TP}{TP + FN
 - **Extraction Accuracy**: Evaluated against field-level ground truth values (FDR number, amount, maturity date, bank name, interest rate).
 - **Forensic Sensitivity**: Evaluated against injected `tamper_flags` and `anomalies`.
 - **Zero Hallucination Rule**: If a field is degraded or occluded, the system must output `confidence < 0.5` with provenance `SOURCE_UNAVAILABLE` or `MISMATCH`, never an ungrounded guess.
+

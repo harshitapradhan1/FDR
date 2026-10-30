@@ -1,31 +1,101 @@
 import os
 import shutil
-from typing import List, Optional
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
+import hashlib
+from typing import List, Optional, Dict, Any
+from datetime import datetime, date
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
+
 from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.core.security import get_current_user, require_role
 from backend.app.models.deposafe_models import (
     User, UserRole, FDR, FDRDocument, FieldProvenance,
     BankVerificationRecord, Institution, FDRStatus,
-    ProvenanceLevel, BankVerificationStatus
+    ProvenanceLevel, BankVerificationStatus, AuditLog
 )
 from backend.app.schemas.deposafe_schemas import (
     FDRCreate, FDROut, FDRDetailOut, FDRRenewRequest,
     FDRReleaseRequest, FDRReleaseApproval, OfficerOverrideRequest,
-    BankVerifyRequest, ManualVerificationRequest, ProvenanceVerifyRequest
+    BankVerifyRequest, ManualVerificationRequest, ProvenanceVerifyRequest,
+    IntegrityCheckOut, IntegrityCheckDocumentResult, SignedDownloadUrlOut
 )
 from backend.app.services.document_ai import extract_fdr_fields_from_pdf
 from backend.app.services.risk_engine import compute_review_priority
 from backend.app.services.audit_service import record_audit_event
 from backend.app.rules.compliance_engine import get_active_rule, evaluate_fdr_compliance
 from backend.app.adapters.bank_adapter import SimulatedBankVerificationAdapter, ManualVerificationAdapter
+from backend.app.services.document_service import (
+    validate_and_scan_file, compute_file_sha256, generate_document_identifier,
+    create_signed_download_token, verify_signed_download_token
+)
+from backend.app.services.lifecycle_service import build_fdr_lifecycle_passport
 
-router = APIRouter(prefix="/fdrs", tags=["FDR Operations"])
+router = APIRouter(tags=["FDR Operations"])
 
+
+# --------------------------------------------------------------------------
+# Helper: Verify Stored Document Integrity
+# --------------------------------------------------------------------------
+def verify_document_integrity(db: Session, doc: FDRDocument) -> IntegrityCheckDocumentResult:
+    if not os.path.exists(doc.file_path):
+        return IntegrityCheckDocumentResult(
+            document_id=doc.id,
+            version=doc.version,
+            file_name=doc.file_name,
+            status="FILE_MISSING",
+            is_tampered=True,
+            recorded_hash=doc.file_hash_sha256,
+            current_hash=None,
+            chain_of_custody_verified=False,
+            message=f"CRITICAL: Physical file missing at path '{doc.file_path}'"
+        )
+
+    with open(doc.file_path, "rb") as f:
+        file_bytes = f.read()
+
+    current_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    if current_hash != doc.file_hash_sha256:
+        return IntegrityCheckDocumentResult(
+            document_id=doc.id,
+            version=doc.version,
+            file_name=doc.file_name,
+            status="TAMPERED",
+            is_tampered=True,
+            recorded_hash=doc.file_hash_sha256,
+            current_hash=current_hash,
+            chain_of_custody_verified=False,
+            message="CRITICAL: Stored file byte content has been altered! Hash mismatch detected."
+        )
+
+    # Check if audit log chain contains this document
+    audit_entry = db.query(AuditLog).filter(
+        AuditLog.entity_type == "FDR_DOCUMENT",
+        AuditLog.entity_id == str(doc.id)
+    ).first()
+    chain_verified = (audit_entry is not None)
+
+    return IntegrityCheckDocumentResult(
+        document_id=doc.id,
+        version=doc.version,
+        file_name=doc.file_name,
+        status="INTACT",
+        is_tampered=False,
+        recorded_hash=doc.file_hash_sha256,
+        current_hash=current_hash,
+        chain_of_custody_verified=chain_verified,
+        message="Document is intact and verified against immutable SHA-256 chain of custody."
+    )
+
+
+# --------------------------------------------------------------------------
+# 1. Create FDR
+# --------------------------------------------------------------------------
 @router.post("", response_model=FDROut)
+@router.post("/", response_model=FDROut, include_in_schema=False)
 def create_fdr(
     fdr_data: FDRCreate,
     db: Session = Depends(get_db),
@@ -34,10 +104,10 @@ def create_fdr(
     institution = db.query(Institution).filter(Institution.id == fdr_data.institution_id).first()
     if not institution:
         raise HTTPException(status_code=404, detail="Institution not found")
-    
+
     # If institution user, can only create for their own institution
     if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr_data.institution_id:
-        raise HTTPException(status_code=403, detail="Cannot register deposit for another institution")
+        raise HTTPException(status_code=403, detail="Forbidden: Cannot register deposit for another institution")
 
     new_fdr = FDR(
         institution_id=fdr_data.institution_id,
@@ -86,7 +156,7 @@ def create_fdr(
     active_rule = get_active_rule(db)
     comp_eval = evaluate_fdr_compliance(new_fdr, institution, active_rule)
     risk_info = compute_review_priority(db, new_fdr, institution, comp_eval)
-    
+
     new_fdr.review_priority_score = risk_info["review_priority_score"]
     new_fdr.review_priority_level = risk_info["review_priority_level"]
     new_fdr.review_flags = risk_info["flags"]
@@ -110,100 +180,123 @@ def create_fdr(
 
     return new_fdr
 
+
+# --------------------------------------------------------------------------
+# 2. Search and Filter FDRs with Pagination
+# --------------------------------------------------------------------------
 @router.get("", response_model=List[FDROut])
+@router.get("/", response_model=List[FDROut], include_in_schema=False)
 def list_fdrs(
-    status_filter: Optional[FDRStatus] = None,
-    risk_level: Optional[str] = None,
-    institution_id: Optional[int] = None,
+    search: Optional[str] = Query(None, description="Search by FDR number, bank name, branch"),
+    institution_id: Optional[int] = Query(None, description="Filter by institution ID"),
+    bank: Optional[str] = Query(None, description="Filter by bank name"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by FDR status"),
+    risk_level: Optional[str] = Query(None, description="Filter by risk level"),
+    maturity_from: Optional[date] = Query(None, description="Maturity date from"),
+    maturity_to: Optional[date] = Query(None, description="Maturity date to"),
+    amount_min: Optional[float] = Query(None, description="Minimum amount"),
+    amount_max: Optional[float] = Query(None, description="Maximum amount"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     query = db.query(FDR)
-    
-    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id:
+
+    # Server-side institution scoping
+    if current_user.role == UserRole.INSTITUTION_USER:
+        if institution_id is not None and institution_id != current_user.institution_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You cannot access FDRs belonging to another institution"
+            )
         query = query.filter(FDR.institution_id == current_user.institution_id)
     elif institution_id:
         query = query.filter(FDR.institution_id == institution_id)
-        
+
+    # Search filter
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            or_(
+                FDR.fdr_number.ilike(search_pattern),
+                FDR.bank_name.ilike(search_pattern),
+                FDR.branch_name.ilike(search_pattern)
+            )
+        )
+
+    # Specific filters
+    if bank:
+        query = query.filter(FDR.bank_name.ilike(f"%{bank}%"))
     if status_filter:
         query = query.filter(FDR.status == status_filter)
     if risk_level:
         query = query.filter(FDR.review_priority_level == risk_level)
+    if maturity_from:
+        query = query.filter(FDR.maturity_date >= maturity_from)
+    if maturity_to:
+        query = query.filter(FDR.maturity_date <= maturity_to)
+    if amount_min is not None:
+        query = query.filter(FDR.amount >= amount_min)
+    if amount_max is not None:
+        query = query.filter(FDR.amount <= amount_max)
 
-    return query.order_by(FDR.id.desc()).all()
+    offset = (page - 1) * page_size
+    return query.order_by(FDR.id.desc()).offset(offset).limit(page_size).all()
 
-@router.get("/{fdr_id}", response_model=FDRDetailOut)
-def get_fdr_detail(
-    fdr_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
-    if not fdr:
-        raise HTTPException(status_code=404, detail="FDR record not found")
-        
-    institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
-    active_rule = get_active_rule(db)
-    comp_eval = evaluate_fdr_compliance(fdr, institution, active_rule)
 
-    docs = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).all()
-    bank_recs = db.query(BankVerificationRecord).filter(BankVerificationRecord.fdr_id == fdr.id).all()
-
-    return {
-        **fdr.__dict__,
-        "institution": institution,
-        "review_flags": fdr.review_flags or [],
-        "provenance_fields": fdr.provenance_fields,
-        "compliance_evaluation": comp_eval,
-        "documents": [
-            {
-                "id": d.id,
-                "version": d.version,
-                "file_name": d.file_name,
-                "file_hash_sha256": d.file_hash_sha256,
-                "perceptual_hash": d.perceptual_hash,
-                "forensic_metadata": d.forensic_metadata,
-                "created_at": d.created_at.isoformat()
-            } for d in docs
-        ],
-        "bank_verifications": [
-            {
-                "id": b.id,
-                "adapter_used": b.adapter_used,
-                "verification_status": b.verification_status.value,
-                "watermark_notice": b.watermark_notice,
-                "api_reference_id": b.api_reference_id,
-                "manual_evidence_type": b.manual_evidence_type,
-                "remarks": b.remarks,
-                "verified_at": b.verified_at.isoformat()
-            } for b in bank_recs
-        ]
-    }
-
+# --------------------------------------------------------------------------
+# 3. Secure Document Upload (PDF/JPG/PNG, Malware scan, SHA-256, Versioning)
+# --------------------------------------------------------------------------
+@router.post("/upload")
 @router.post("/{fdr_id}/upload-document")
 async def upload_fdr_document(
-    fdr_id: int,
+    fdr_id: Optional[int] = None,
     file: UploadFile = File(...),
+    doc_type: str = Form("FDR_CERTIFICATE"),
+    fdr_id_form: Optional[int] = Form(None, alias="fdr_id"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    target_fdr_id = fdr_id or fdr_id_form
+    if not target_fdr_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required parameter: fdr_id"
+        )
+
+    fdr = db.query(FDR).filter(FDR.id == target_fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
 
+    # Server-side institution scoping
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You cannot upload documents for another institution"
+        )
+
     institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
 
-    # Determine document version
-    existing_docs_count = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).count()
-    version = existing_docs_count + 1
+    # Read and validate file bytes (malware scan, size, magic bytes)
+    file_bytes = await file.read()
+    cleaned_filename, verified_mime = validate_and_scan_file(file, file_bytes)
 
-    file_dir = os.path.join(settings.STORAGE_DIR, f"fdr_{fdr_id}")
+    # Compute SHA-256 byte hash
+    file_sha256 = compute_file_sha256(file_bytes)
+
+    # Determine document version (replacement creates a new version; previous retained)
+    existing_docs = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).all()
+    version = len(existing_docs) + 1
+
+    # Immutable storage directory
+    file_dir = os.path.join(settings.STORAGE_DIR, f"fdr_{fdr.id}")
     os.makedirs(file_dir, exist_ok=True)
-    saved_filename = f"v{version}_{file.filename}"
+    saved_filename = f"v{version}_{cleaned_filename}"
     file_path = os.path.join(file_dir, saved_filename)
 
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(file_bytes)
 
     # Run Document AI
     ai_results = extract_fdr_fields_from_pdf(file_path)
@@ -213,16 +306,23 @@ async def upload_fdr_document(
     doc_record = FDRDocument(
         fdr_id=fdr.id,
         version=version,
-        file_name=file.filename,
+        file_name=cleaned_filename,
         file_path=file_path,
-        file_hash_sha256=forensics["file_sha256"],
-        perceptual_hash=forensics["perceptual_hash"],
-        mime_type=file.content_type or "application/pdf",
+        storage_path=f"storage/fdr_{fdr.id}/{saved_filename}",
+        file_hash_sha256=file_sha256,
+        file_hash=file_sha256,
+        perceptual_hash=forensics.get("perceptual_hash", ""),
+        mime_type=verified_mime,
+        doc_type=doc_type,
+        file_size_bytes=len(file_bytes),
         forensic_metadata=forensics,
         uploaded_by=current_user.id
     )
     db.add(doc_record)
     db.commit()
+    db.refresh(doc_record)
+
+    doc_unique_id = generate_document_identifier(doc_record.id, doc_record.created_at.year)
 
     # Update 4-level Provenance with AI_EXTRACTED values and mismatch detection
     for prov in fdr.provenance_fields:
@@ -231,8 +331,7 @@ async def upload_fdr_document(
             prov.ai_extracted_value = extracted_val
             prov.ai_confidence = fields[prov.field_name]["confidence"]
             prov.bounding_box = fields[prov.field_name]["bbox"]
-            
-            # Check for mismatch against submitted
+
             sub_norm = (prov.submitted_value or "").strip().lower()
             ext_norm = extracted_val.strip().lower()
 
@@ -269,30 +368,271 @@ async def upload_fdr_document(
         fdr.status = FDRStatus.UNDER_VERIFICATION
     db.commit()
 
+    # Record tamper-evident hash-chained audit entry
     record_audit_event(
         db=db,
-        event_type="DOCUMENT_UPLOADED_AND_AI_PARSED",
+        event_type="DOCUMENT_STORED_IN_CUSTODY",
         entity_type="FDR_DOCUMENT",
         entity_id=str(doc_record.id),
         actor_id=current_user.id,
         actor_role=current_user.role.value,
         payload={
             "fdr_id": fdr.id,
+            "document_id": doc_record.id,
+            "document_identifier": doc_unique_id,
             "version": version,
-            "sha256": forensics["file_sha256"],
-            "producer_flagged": forensics["producer_flagged"],
+            "sha256": file_sha256,
+            "mime_type": verified_mime,
+            "file_name": cleaned_filename,
+            "producer_flagged": forensics.get("producer_flagged", False),
             "review_priority_score": fdr.review_priority_score
         }
     )
 
     return {
-        "message": "Document uploaded and intelligence analysis completed.",
+        "message": "Document securely uploaded and stored immutably in chain of custody.",
+        "document_id": doc_record.id,
+        "document_identifier": doc_unique_id,
+        "fdr_id": fdr.id,
         "version": version,
+        "sha256": file_sha256,
+        "mime_type": verified_mime,
         "forensics": forensics,
         "extracted_fields": fields,
         "review_priority": risk_info
     }
 
+
+# --------------------------------------------------------------------------
+# 4. Get FDR Detail (Server-Side Scoped)
+# --------------------------------------------------------------------------
+@router.get("/{fdr_id}", response_model=FDRDetailOut)
+def get_fdr_detail(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    # Server-side institution scoping
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You cannot access FDRs belonging to another institution"
+        )
+
+    institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
+    active_rule = get_active_rule(db)
+    comp_eval = evaluate_fdr_compliance(fdr, institution, active_rule)
+
+    docs = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).order_by(FDRDocument.version.asc()).all()
+    bank_recs = db.query(BankVerificationRecord).filter(BankVerificationRecord.fdr_id == fdr.id).all()
+
+    return {
+        **fdr.__dict__,
+        "institution": institution,
+        "review_flags": fdr.review_flags or [],
+        "provenance_fields": fdr.provenance_fields,
+        "compliance_evaluation": comp_eval,
+        "documents": [
+            {
+                "id": d.id,
+                "document_identifier": generate_document_identifier(d.id, d.created_at.year),
+                "version": d.version,
+                "file_name": d.file_name,
+                "file_hash_sha256": d.file_hash_sha256,
+                "perceptual_hash": d.perceptual_hash,
+                "forensic_metadata": d.forensic_metadata,
+                "created_at": d.created_at.isoformat()
+            } for d in docs
+        ],
+        "bank_verifications": [
+            {
+                "id": b.id,
+                "adapter_used": b.adapter_used,
+                "verification_status": b.verification_status.value,
+                "watermark_notice": b.watermark_notice,
+                "api_reference_id": b.api_reference_id,
+                "manual_evidence_type": b.manual_evidence_type,
+                "remarks": b.remarks,
+                "verified_at": b.verified_at.isoformat()
+            } for b in bank_recs
+        ]
+    }
+
+
+# --------------------------------------------------------------------------
+# 5. FDR Lifecycle Passport
+# --------------------------------------------------------------------------
+@router.get("/{fdr_id}/passport")
+def get_fdr_passport(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    # Server-side institution scoping
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You cannot access the lifecycle passport for another institution's FDR"
+        )
+
+    passport = build_fdr_lifecycle_passport(db, fdr_id)
+    return passport
+
+
+@router.get("/lineage/{lineage_id}/passport")
+def get_lineage_passport(
+    lineage_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.lineage_id == lineage_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="Lineage not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You cannot access the lifecycle passport for another institution's lineage"
+        )
+
+    return build_fdr_lifecycle_passport(db, fdr.id)
+
+
+# --------------------------------------------------------------------------
+# 6. Secure Expiring Download URLs & Signed Download
+# --------------------------------------------------------------------------
+@router.get("/{fdr_id}/documents/{document_id}/download-url", response_model=SignedDownloadUrlOut)
+def get_document_download_url(
+    fdr_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Cannot generate download URL for another institution's document"
+        )
+
+    doc = db.query(FDRDocument).filter(FDRDocument.id == document_id, FDRDocument.fdr_id == fdr.id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    token_data = create_signed_download_token(doc.id, expires_in_seconds=900)
+    download_url = f"/api/v1/fdrs/documents/download?token={token_data['token']}"
+
+    return {
+        "document_id": doc.id,
+        "file_name": doc.file_name,
+        "download_url": download_url,
+        "expires_at": token_data["expires_at"],
+        "expires_in_seconds": token_data["expires_in_seconds"],
+        "disclaimer": "Temporary expiring link (valid 15m). Do not share."
+    }
+
+
+@router.get("/documents/download")
+def download_document_with_token(
+    token: str = Query(..., description="HMAC-signed expiring download token"),
+    db: Session = Depends(get_db)
+):
+    document_id = verify_signed_download_token(token)
+    doc = db.query(FDRDocument).filter(FDRDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found in storage registry")
+
+    if not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="Physical file not found in storage")
+
+    return FileResponse(
+        path=doc.file_path,
+        filename=doc.file_name,
+        media_type=doc.mime_type
+    )
+
+
+# --------------------------------------------------------------------------
+# 7. Tamper-Evident Chain of Custody & File Integrity Check
+# --------------------------------------------------------------------------
+@router.get("/{fdr_id}/integrity-check", response_model=IntegrityCheckOut)
+def check_fdr_integrity(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Cannot run integrity check on another institution's FDR"
+        )
+
+    docs = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).order_by(FDRDocument.version.asc()).all()
+    results = [verify_document_integrity(db, d) for d in docs]
+    has_tampering = any(r.is_tampered for r in results)
+
+    record_audit_event(
+        db=db,
+        event_type="INTEGRITY_CHECK_EXECUTED",
+        entity_type="FDR",
+        entity_id=str(fdr.id),
+        actor_id=current_user.id,
+        actor_role=current_user.role.value,
+        payload={
+            "documents_checked": len(results),
+            "has_tampering": has_tampering,
+            "overall_status": "TAMPERED" if has_tampering else "INTACT"
+        }
+    )
+
+    return {
+        "fdr_id": fdr.id,
+        "overall_status": "TAMPERED" if has_tampering else "INTACT",
+        "has_tampering": has_tampering,
+        "documents_checked": len(results),
+        "results": results,
+        "disclaimer": "Cryptographic integrity verified against immutable SHA-256 chain of custody."
+    }
+
+
+@router.get("/documents/{document_id}/integrity-check", response_model=IntegrityCheckDocumentResult)
+def check_single_document_integrity(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    doc = db.query(FDRDocument).filter(FDRDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    fdr = db.query(FDR).filter(FDR.id == doc.fdr_id).first()
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Cannot run integrity check on another institution's document"
+        )
+
+    return verify_document_integrity(db, doc)
+
+
+# --------------------------------------------------------------------------
+# 8. Human-in-the-Loop Actions & Bank Verification
+# --------------------------------------------------------------------------
 @router.post("/{fdr_id}/verify-bank")
 def verify_bank_details(
     fdr_id: int,
@@ -303,7 +643,7 @@ def verify_bank_details(
     fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
-        
+
     institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
 
     # Bank Verification Adapter pattern
@@ -382,6 +722,7 @@ def verify_bank_details(
         "new_status": fdr.status.value
     }
 
+
 @router.post("/{fdr_id}/verify-manual")
 def record_manual_bank_verification(
     fdr_id: int,
@@ -392,7 +733,7 @@ def record_manual_bank_verification(
     fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
-        
+
     institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
 
     adapter = ManualVerificationAdapter(
@@ -445,6 +786,7 @@ def record_manual_bank_verification(
 
     return {"message": "Manual verification evidence recorded successfully.", "result": result}
 
+
 @router.post("/{fdr_id}/verify-field")
 def verify_field_provenance(
     fdr_id: int,
@@ -480,6 +822,7 @@ def verify_field_provenance(
     )
 
     return {"message": f"Field '{req.field_name}' marked as OFFICER_VERIFIED", "field": prov}
+
 
 @router.post("/{fdr_id}/override")
 def officer_override(
@@ -536,6 +879,7 @@ def officer_override(
         "justification": fdr.officer_override_justification
     }
 
+
 @router.post("/{fdr_id}/renew")
 def renew_fdr(
     fdr_id: int,
@@ -553,6 +897,7 @@ def renew_fdr(
 
     new_fdr = FDR(
         institution_id=old_fdr.institution_id,
+        lineage_id=old_fdr.lineage_id,
         bank_name=req.bank_name,
         branch_name=req.branch_name,
         ifsc_code=req.ifsc_code,
@@ -576,6 +921,7 @@ def renew_fdr(
     # Mark old instrument as SUPERSEDED and link successor
     old_fdr.status = FDRStatus.RENEWED_SUPERSEDED
     old_fdr.successor_fdr_id = new_fdr.id
+    old_fdr.superseded_by = new_fdr.id
     db.commit()
 
     record_audit_event(
@@ -598,6 +944,7 @@ def renew_fdr(
         "new_fdr_id": new_fdr.id,
         "predecessor_fdr_id": old_fdr.id
     }
+
 
 @router.post("/{fdr_id}/request-release")
 def request_fdr_release(
@@ -629,6 +976,7 @@ def request_fdr_release(
     )
 
     return {"message": "Deposit release requested. Pending Competent Authority authorization.", "fdr": fdr}
+
 
 @router.post("/{fdr_id}/authorize-release")
 def authorize_fdr_release(

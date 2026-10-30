@@ -25,11 +25,12 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **20 passed in 1.52s**
+- Total Pytest Test Cases: **28 passed in 1.94s**
 - Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
 - End-to-End Critical Flows: `backend/tests/test_e2e_flows.py` (3 passed)
+- Phase 3 Core Lifecycle Tests: `backend/tests/test_phase3_lifecycle.py` (8 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
 - Automated Demo Script: `scripts/demo_runner.py` executed cleanly via `make demo`
 - Database Migrations: Alembic migration `0001_phase1_foundation` applied and verified.
@@ -52,4 +53,29 @@
   - Seeds `ground_truth.json` directly into SQLite / PostgreSQL and local storage.
 - **Dataset Specification (`docs/DATASET.md`)**:
   - Complete documentation of ground truth schema, metrics calculation protocol, and safety guardrails.
+
+---
+
+### 4. Phase 3 Completion: Core Lifecycle Management
+- **Security & Scoped Access (`backend/app/api/fdrs.py`, `institutions.py`)**:
+  - Server-side institution-scoped access strictly enforced on all FDR detail, list, passport, upload, and download endpoints (`403 Forbidden` if Institution User queries another institution's data).
+  - Institution management APIs: `POST /institutions`, `GET /institutions` with regional office/state search and pagination.
+- **Secure Document Upload & Validation (`backend/app/services/document_service.py`)**:
+  - Multi-layer validation: Extension validation (PDF, JPG, JPEG, PNG), MIME inspection, Magic byte headers (`%PDF`, `\xff\xd8\xff`, `\x89PNG`).
+  - Size check enforced (maximum 15MB limit).
+  - Malware-scan stub with automated detection of EICAR test signatures and suspicious binary payloads (`MZ`, `ELF`).
+  - Immutable storage in `storage/fdr_{id}/v{version}_{filename}` with standardized document IDs (e.g. `FDR-2026-00145`).
+- **Document Versioning**:
+  - Replacing a document increments version and retains all previous versions immutably on disk and in database.
+- **FDR Lifecycle Passport (`backend/app/services/lifecycle_service.py`)**:
+  - Endpoints: `GET /fdr/{id}/passport` and `GET /fdr/lineage/{lineage_id}/passport`.
+  - Consolidated chronological timeline linking instrument creation, document versions, AI extractions, bank confirmations, officer observations, renewals, and release orders.
+  - Lineage tracking with non-destructive renewal guarantee (predecessors permanently retained as `SUPERSEDED`).
+- **Tamper-Evident Chain of Custody & File Integrity Check**:
+  - Endpoints: `GET /fdr/{id}/integrity-check` and `GET /fdr/documents/{document_id}/integrity-check`.
+  - Reads physical bytes from disk, computes SHA-256, compares against recorded database hash, and verifies presence in the append-only audit chain.
+  - Automatically flags `TAMPERED` if any stored byte on disk is altered.
+- **Secure Expiring Download URLs**:
+  - Endpoint: `GET /fdr/{fdr_id}/documents/{document_id}/download-url` generating HMAC-SHA256 signed expiring tokens (15 minutes).
+  - Endpoint: `GET /fdr/documents/download?token=...` serving verifiable downloads with expiry and signature enforcement.
 

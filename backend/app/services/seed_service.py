@@ -1,4 +1,5 @@
 import os
+import hashlib
 from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
 from backend.app.core.config import settings
@@ -187,13 +188,15 @@ def seed_database_if_empty(db: Session):
         tamper_metadata=False,
         include_proper_lien=True
     )
+    with open(fdr1_pdf_path, "rb") as f:
+        fdr1_sha = hashlib.sha256(f.read()).hexdigest()
 
     doc1 = FDRDocument(
         fdr_id=fdr1.id,
         version=1,
         file_name="v1_SBI_Certificate.pdf",
         file_path=fdr1_pdf_path,
-        file_hash_sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        file_hash_sha256=fdr1_sha,
         perceptual_hash="b4a8e3d29c1f0a5b",
         forensic_metadata={
             "pdf_producer": "CoreBankingSystem CBS-PDF Engine v4.1",
@@ -302,12 +305,15 @@ def seed_database_if_empty(db: Session):
         tamper_metadata=True,
         include_proper_lien=False
     )
+    with open(fdr2_pdf_path, "rb") as f:
+        fdr2_sha = hashlib.sha256(f.read()).hexdigest()
+
     db.add(FDRDocument(
         fdr_id=fdr2.id,
         version=1,
         file_name="v1_PNB_Tampered.pdf",
         file_path=fdr2_pdf_path,
-        file_hash_sha256="7c5a9d2e1b4f8a3c6e9d0b2a5c8e1f4a7b0d3e6f9a2c5b8e1d4f7a0b3c6e9d2f",
+        file_hash_sha256=fdr2_sha,
         perceptual_hash="d8c4a2b1e7f9035a",
         forensic_metadata={
             "pdf_producer": "Canva PDF Designer v2.4 (tampered-producer-flag)",

@@ -166,3 +166,38 @@ class DemoClockOut(BaseModel):
     current_simulated_date: date
     offset_days: int
     updated_at: datetime
+
+# Phase 3: Integrity & Lifecycle Passport Schemas
+class IntegrityCheckDocumentResult(BaseModel):
+    document_id: int
+    version: int
+    file_name: str
+    status: str # "INTACT", "TAMPERED", "FILE_MISSING"
+    is_tampered: bool
+    recorded_hash: str
+    current_hash: Optional[str] = None
+    chain_of_custody_verified: bool
+    message: str
+
+class IntegrityCheckOut(BaseModel):
+    fdr_id: int
+    overall_status: str
+    has_tampering: bool
+    documents_checked: int
+    results: List[IntegrityCheckDocumentResult]
+    disclaimer: str = "Cryptographic integrity verified against immutable SHA-256 chain of custody."
+
+class SignedDownloadUrlOut(BaseModel):
+    document_id: int
+    file_name: str
+    download_url: str
+    expires_at: int
+    expires_in_seconds: int
+    disclaimer: str = "Temporary expiring link. Do not share credentials."
+
+class PaginatedFDROut(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    items: List[FDROut]
