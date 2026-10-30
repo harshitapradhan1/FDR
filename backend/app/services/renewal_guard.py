@@ -170,3 +170,4 @@ def compute_smart_renewal_priority_queue(db: Session) -> List[Dict[str, Any]]:
     # Sort by urgency score descending, then days remaining ascending
     queue.sort(key=lambda x: (-x["urgency_score"], x["days_remaining"]))
     return queue
+

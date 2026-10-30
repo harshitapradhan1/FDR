@@ -45,3 +45,4 @@ mock_smtp:
   sender_name: "AICTE DepoSafe Regulation Bureau"
   simulated_delivery_latency_ms: 12
   require_acknowledgement: true
+

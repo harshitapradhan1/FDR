@@ -25,7 +25,7 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **53 passed in 5.01s**
+- Total Pytest Test Cases: **57 passed in 5.38s**
 - Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
@@ -36,6 +36,7 @@
 - Phase 6 Anomaly & Forensics Tests: `backend/tests/test_phase6_anomaly.py` (5 passed)
 - Phase 7 Deterministic Compliance Tests: `backend/tests/test_phase7_compliance.py` (5 passed)
 - Phase 8 Proactive Lifecycle Automation Tests: `backend/tests/test_phase8_automation.py` (5 passed)
+- Phase 9 Release and Refund Lifecycle Tests: `backend/tests/test_phase9_release.py` (4 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
 - Automated Demo Scripts: `scripts/demo_runner.py` and `scripts/demo_phase5_verification.py` executed cleanly
 - Database Migrations: Alembic migrations `0001_phase1_foundation` and `0002_phase5_dual_truth` applied and verified.
@@ -233,6 +234,29 @@
   - `GET /lifecycle/calendar/maturities` returns chronological calendar events with date filters and institution scoping.
 - **Empirical Metrics**:
   - Evaluation harness `scripts/benchmark_alerts.py` generated `docs/metrics/alerts.md`.
+
+---
+
+### 10. Phase 9 Completion: Release and Refund Lifecycle & Competent Authority Safeguards
+- **Statutory Release Workflow (`backend/app/api/release.py`, `backend/app/state_machines/fdr_state_machine.py`)**:
+  - Strict compliance with all 9 explicit workflow states: `Draft`, `Submitted`, `Under scrutiny`, `Clarification required`, `Recommended for approval`, `Approved`, `Rejected`, `Released`, `Closed`.
+  - Illegal state jumps strictly blocked by the finite state machine (`InvalidStateTransitionError`).
+- **Release Readiness Check (`backend/app/services/release_service.py`)**:
+  - Automatically evaluates configured release prerequisites: mandatory documents & State/University NOCs, deposit maturity & statutory lock-in fulfillment, Core Banking System verification confirmation, dual-truth discrepancy clearance, and forensic anomaly clearance.
+  - Generates transparent checklist with `PASS` / `FAIL` / `NEEDS_REVIEW` and evidence references.
+  - Statutory guarantee: *"Release readiness check is strictly advisory. It informs the officer; it never approves."*
+- **Role-Based Authorization Gate (Competent Authority Only)**:
+  - Non-negotiable requirement proven by unit tests: Only `COMPETENT_AUTHORITY` role can set `Approved` or `Released`.
+  - Attempts by Institution User, Verification Officer, Regional Officer, or Auditor return `403 Forbidden`.
+  - Direct state machine code paths enforce role checks (`PermissionError`).
+  - Approval mandates typed justification and official release order reference (`AICTE/REG/REL/...`).
+- **Archival Closure & Lifecycle Passport Preservation**:
+  - Endpoint `POST /release/fdr/{id}/disburse-and-close` transitions instrument to `RELEASED` then archives as `CLOSED`.
+  - Preserves entire chronological history in the FDR Lifecycle Passport.
+  - Every transition cryptographically logged to the append-only audit trail with actor ID, timestamp, and justification.
+- **Unit & Integration Test Suite (`backend/tests/test_phase9_release.py`)**:
+  - 4 comprehensive tests verifying readiness check, end-to-end 9-state release flow, non-authority authorization prohibition, and illegal transition blocking.
+
 
 
 

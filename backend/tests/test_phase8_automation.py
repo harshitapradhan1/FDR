@@ -212,3 +212,4 @@ def test_predictive_intelligence_and_expiry_calendar_api():
     assert "start" in first_ev
     assert "title" in first_ev
     assert "color_category" in first_ev
+

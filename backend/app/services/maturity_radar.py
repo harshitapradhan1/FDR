@@ -226,3 +226,4 @@ def run_maturity_radar_scan(
         "escalations_count": escalations_count,
         "notifications": generated_notifications
     }
+

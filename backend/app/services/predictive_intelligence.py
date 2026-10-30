@@ -189,3 +189,4 @@ class PredictiveComplianceForecaster:
             "high_risk_institutions_sample": high_risk_cases[:5],
             "statutory_label": MODEL_DISCLAIMER
         }
+
