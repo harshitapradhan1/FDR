@@ -25,7 +25,7 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **38 passed in 2.60s**
+- Total Pytest Test Cases: **43 passed in 3.51s**
 - Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
@@ -33,6 +33,7 @@
 - Phase 3 Core Lifecycle Tests: `backend/tests/test_phase3_lifecycle.py` (8 passed)
 - Phase 4 AI Document Pipeline Tests: `backend/tests/test_phase4_ai_pipeline.py` (5 passed)
 - Phase 5 Dual-Truth Ledger Tests: `backend/tests/test_phase5_dual_truth.py` (5 passed)
+- Phase 6 Anomaly & Forensics Tests: `backend/tests/test_phase6_anomaly.py` (5 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
 - Automated Demo Scripts: `scripts/demo_runner.py` and `scripts/demo_phase5_verification.py` executed cleanly
 - Database Migrations: Alembic migrations `0001_phase1_foundation` and `0002_phase5_dual_truth` applied and verified.
@@ -146,6 +147,38 @@
 - **Turnaround Metrics & Live Demo Runner**:
   - Empirical verification turnaround benchmark (`scripts/benchmark_verification.py` &rarr; `docs/metrics/verification.md`): Mean latency **2.24 ms**, P50 **2.07 ms**, P90 **2.52 ms**.
   - Interactive terminal demo runner: `scripts/demo_phase5_verification.py` (`make demo-phase5`).
+
+---
+
+### 7. Phase 6 Completion: Anomaly Intelligence, Digital Forensics & Relationship Graph
+- **Multi-Modal Duplicate Detection Engine (`DuplicateDetector`)**:
+  - Implements composite key check: `(bank_name, fdr_number)` matching (not FDR number alone).
+  - SHA-256 byte-for-byte exact file collision detection across different colleges and years.
+  - Perceptual hash (`imagehash.phash`) Hamming distance similarity ($\le 8$) for visual template reuse and re-scans.
+- **FDR Digital Forensics Analyzer (`DigitalForensicsAnalyzer`)**:
+  - Error Level Analysis (ELA) false-color compression heatmaps using in-memory JPEG recompression and `cv2.COLORMAP_TURBO` false-color blending.
+  - Optical character alignment and font size/family discontinuity analysis across PyMuPDF text spans around amount and date regions.
+  - Copy-paste cloning detection using `cv2.ORB_create()` keypoint match clusters.
+  - PDF metadata anomaly analysis flagging graphic editing software signatures (`Adobe Photoshop`, `Canva`, `GIMP`, `CorelDraw`, `Inkscape`).
+  - Text-layer vs visual render disparity detection (invisible / off-canvas text).
+  - Generated visual ELA heatmaps for 5 tampered samples saved to `docs/assets/forensics/`.
+- **FDR Intelligence Ecosystem Graph (`build_ecosystem_networkx_graph`)**:
+  - NetworkX `MultiDiGraph` builder generating React Flow formatted nodes and edges.
+  - Entity nodes: `INSTITUTION`, `FDR`, `BANK`, `BRANCH`, `DOCUMENT`, `SOCIETY`, `SIGNATORY`.
+  - Relationship edges: `SUBMITTED`, `ISSUED_BY`, `AT_BRANCH`, `HAS_DOCUMENT`, `RENEWED_FROM`, `SAME_NUMBER`, `SAME_HASH`, `VISUALLY_SIMILAR`.
+  - Automatically identifies anomalous patterns such as `CROSS_INSTITUTION_SHARED_FDR` (e.g. Hero Case `BNB-DEL-HERO-1000` simultaneously pledged at Bharat National Bank).
+  - Mandatory statutory label: `"Relationship requiring investigation, not proof of fraud."`
+- **Explainable Review Priority Risk Engine (`compute_review_priority`)**:
+  - Configurable transparent indicator weights in `config/risk_weights.yaml`.
+  - Factors: `duplicate_collision (35.0)`, `maturity_mismatch (25.0)`, `bank_unconfirmed (25.0)`, `forensic_tamper (20.0)`, `compliance_deficit (15.0)`, `perceptual_clone (15.0)`.
+  - Strict statutory label: `"Review priority indicator, not a fraud probability"`.
+  - Audited human officer override endpoint (`POST /fdr/{fdr_id}/override-risk`) requiring typed mandatory justification and cryptographic audit logging.
+- **Hero Demo Case Verification (`BNB-DEL-HERO-1000`)**:
+  - Review priority score: **`60.0` / 100** (Strictly within SIH target 60.0 to 80.0, `HIGH` review priority).
+  - Flags raised: duplicate cross-institution collision, maturity mismatch (`2032-11-15` vs `2026-11-15`), graphic editing software signature (`Adobe Photoshop`).
+  - Zero false critical accusations on pristine clean documents (mean score: `17.4` / 100, 100% $\le 25.0$ `LOW`).
+  - Empirical benchmark report: `docs/metrics/anomaly.md`.
+
 
 
 

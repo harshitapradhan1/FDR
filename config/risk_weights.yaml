@@ -1,0 +1,58 @@
+# DepoSafe Review Priority Indicator Weights Configuration
+# Version: 1.0.0
+# Wording: "Review priority indicator, not a fraud probability"
+# AI is advisory; final decisions rest with the competent authority.
+
+version: "1.0.0"
+last_updated: "2026-10-30"
+author: "AICTE Regulation Bureau IT Cell"
+disclaimer: "ILLUSTRATIVE PLACEHOLDERS - configurable by AICTE Admin. Passages indicate available checks passed vs not confirmed."
+
+indicators:
+  duplicate_collision:
+    name: "duplicate_collision"
+    label: "Cross-Institution or Exact Instrument Collision"
+    max_weight: 35.0
+    description: "Detects exact bank+FDR number collisions or identical document SHA-256 hashes across different institutions."
+    recommended_action: "Examine physical ledger at issuing branch; issue formal clarification summons to institution."
+
+  maturity_mismatch:
+    name: "maturity_mismatch"
+    label: "Cross-Document Maturity Discrepancy"
+    max_weight: 25.0
+    description: "Discrepancy detected between FDR Certificate, Bank Confirmation Letter, and Core Banking records."
+    recommended_action: "Request bank confirmation letter directly dispatched from bank regional corporate office."
+
+  bank_unconfirmed:
+    name: "bank_unconfirmed"
+    label: "Core Banking Unconfirmed or Missing Lien"
+    max_weight: 25.0
+    description: "Bank CBS returned not confirmed or failed to verify joint lien marked in favor of AICTE."
+    recommended_action: "Initiate SFMS IFN 760 status inquiry with bank zonal nodal officer."
+
+  forensic_tamper:
+    name: "forensic_tamper"
+    label: "Digital Tampering & Forensic ELA Anomaly"
+    max_weight: 20.0
+    description: "Error Level Analysis (ELA) heatmap hotspots, metadata editing software traces, or font inconsistency."
+    recommended_action: "Route document to AICTE Forensic Scrutiny Cell for physical UV and paper grain inspection."
+
+  compliance_deficit:
+    name: "compliance_deficit"
+    label: "Regulation Norm Deficit (APH Rules)"
+    max_weight: 15.0
+    description: "Deposit amount is below statutory norm, tenure is insufficient, or non-scheduled bank used."
+    recommended_action: "Issue deficiency notice to institution with 15-day rectification window."
+
+  perceptual_clone:
+    name: "perceptual_clone"
+    label: "Perceptual Visual Template Reuse"
+    max_weight: 15.0
+    description: "Perceptual image hash (pHash) matches an unrelated deposit instrument from a previous academic session."
+    recommended_action: "Compare visual layout structure against authorized bank master security templates."
+
+thresholds:
+  critical: 75.0
+  high: 50.0
+  medium: 25.0
+  low: 0.0

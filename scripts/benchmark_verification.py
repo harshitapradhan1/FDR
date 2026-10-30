@@ -354,3 +354,4 @@ Every required behavior scenario was executed and verified during the benchmark:
 
 if __name__ == "__main__":
     run_verification_benchmark()
+

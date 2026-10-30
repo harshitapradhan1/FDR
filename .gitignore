@@ -36,5 +36,6 @@ yarn-error.log*
 Thumbs.db
 
 # Storage / Uploads (generated sample files)
-storage/fdr_*
+storage/
+
 

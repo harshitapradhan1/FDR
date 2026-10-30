@@ -93,3 +93,4 @@ def check_bank_signature(body: SignatureVerifyPayload):
         "valid": is_valid,
         "disclaimer": "SIMULATED, not a real bank verification"
     }
+

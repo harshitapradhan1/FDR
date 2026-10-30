@@ -32,6 +32,8 @@ from backend.app.rules.compliance_engine import get_active_rule, evaluate_fdr_co
 from backend.app.adapters.bank_adapter import SimulatedBankVerificationAdapter, ManualVerificationAdapter
 from backend.app.services.verification_orchestrator import VerificationOrchestrator, bank_circuit_breaker
 from backend.app.services.reconciliation_service import CrossDocumentReconciler
+from backend.app.services.forensics_service import DigitalForensicsAnalyzer
+from backend.app.services.duplicate_detector import DuplicateDetector
 from backend.app.services.document_service import (
     validate_and_scan_file, compute_file_sha256, generate_document_identifier,
     create_signed_download_token, verify_signed_download_token
@@ -1053,6 +1055,7 @@ def verify_field_provenance(
 
 
 @router.post("/{fdr_id}/override")
+@router.post("/{fdr_id}/override-risk")
 def officer_override(
     fdr_id: int,
     req: OfficerOverrideRequest,
@@ -1104,8 +1107,69 @@ def officer_override(
         "officer_override": fdr.officer_override,
         "review_priority_score": fdr.review_priority_score,
         "status": fdr.status.value,
-        "justification": fdr.officer_override_justification
+        "justification": fdr.officer_override_justification,
+        "statutory_label": "Review priority indicator, not a fraud probability"
     }
+
+
+@router.get("/{fdr_id}/forensics")
+def get_fdr_forensics(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FDR Digital Forensics: Error Level Analysis heatmap, font inconsistency,
+    copy-paste cloning detection, JPEG double-compression, and metadata anomalies.
+    """
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to FDR record outside your institution")
+
+    latest_doc = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).order_by(FDRDocument.version.desc()).first()
+    if not latest_doc or not latest_doc.file_path or not os.path.exists(latest_doc.file_path):
+        return {
+            "fdr_id": fdr.id,
+            "message": "No document available on disk for forensic analysis.",
+            "forensic_score": 0.0,
+            "highlighted_regions": []
+        }
+
+    forensics_data = DigitalForensicsAnalyzer.analyze_document(
+        file_path=latest_doc.file_path,
+        doc_id=latest_doc.id
+    )
+
+    return {
+        "fdr_id": fdr.id,
+        "fdr_number": fdr.fdr_number,
+        "forensics": forensics_data,
+        "statutory_label": "Preliminary forensic indicator for human review, not definitive proof of manipulation."
+    }
+
+
+@router.get("/{fdr_id}/duplicates")
+def get_fdr_duplicates(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Multi-modal duplicate detection: exact bank+FDR number match, SHA-256 byte identical
+    reused files, and perceptual hash similarity for re-scans and re-renders.
+    """
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to FDR record outside your institution")
+
+    dup_report = DuplicateDetector.check_fdr_duplicates(fdr, db)
+    return dup_report
 
 
 @router.post("/{fdr_id}/renew")

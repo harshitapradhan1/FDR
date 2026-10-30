@@ -155,3 +155,4 @@ When third-party bank gateways encounter network latency or scheduled maintenanc
 2. **Circuit Breaker**: If failures exceed 3 consecutive errors, the circuit breaker trips to `OPEN`, preventing service starvation and fast-failing downstream requests.
 3. **Pending Queue**: Unconfirmed instruments are queued into `verification_queue` for automated re-polling.
 4. **Human-in-the-Loop Fallback**: If the bank gateway remains unreachable, provenance is flagged `SOURCE_UNAVAILABLE` and routed to the assigned Verification Officer for manual verification using physical branch visit reports or signed bank confirmation letters.
+
