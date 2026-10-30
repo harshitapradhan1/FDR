@@ -319,3 +319,4 @@ DepoSafe generates false-color Error Level Analysis (ELA) heatmaps to expose dig
 
 if __name__ == "__main__":
     run_anomaly_benchmark()
+

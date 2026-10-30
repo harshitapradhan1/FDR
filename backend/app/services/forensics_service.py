@@ -382,3 +382,4 @@ class DigitalForensicsAnalyzer:
             "highlighted_regions": highlighted_regions,
             "disclaimer": "Preliminary forensic indicator for human review, not definitive proof of manipulation."
         }
+

@@ -1,0 +1,151 @@
+# ==============================================================================
+# AICTE APPROVAL PROCESS HANDBOOK (APH) - REGULATORY SECURITY DEPOSIT RULES
+# Version: APH-2025-26.v2 (Revised Norms: Min Deposit Increase & Stricter Tenure)
+# NOTE: ALL values are illustrative placeholders, configurable by AICTE Admin.
+# ==============================================================================
+
+version_tag: "APH-2025-26.v2"
+handbook_edition: "AICTE Approval Process Handbook (APH) 2025-2026 Revised"
+effective_from: "2025-06-01"
+effective_to: null
+is_active: false
+description: "AICTE APH 2025-26 Revised Security Deposit Norms (Deposit Increase & Strict Tenure)"
+disclaimer: "ILLUSTRATIVE PLACEHOLDERS - configurable by AICTE Admin"
+statutory_disclaimer_hi: "सभी नियम और मान उदाहरणार्थ सांकेतिक हैं - एआईसीटीई व्यवस्थापक द्वारा विन्यास योग्य"
+
+rules:
+  - rule_id: "RULE-MIN-AMOUNT-01"
+    description: "Prescribed Minimum Security Deposit (FDR) Principal Amount"
+    description_hi: "निर्धारित न्यूनतम सुरक्षा जमा (एफडीआर) मूल राशि"
+    type: "min_amount"
+    severity: "CRITICAL"
+    handbook_reference: "APH 2025-26 Chapter I, Clause 1.4(b) [Placeholder]"
+    effective_from: "2025-06-01"
+    effective_to: null
+    applies_to:
+      institution_category: "ALL"
+      program_level: "ALL"
+    parameters:
+      deposit_norms_inr:
+        "Engineering & Technology":
+          "UG": 4000000        # Raised from 35 Lakhs to 40 Lakhs!
+          "PG": 3000000        # Raised from 25 Lakhs to 30 Lakhs!
+          "Diploma": 2000000   # Raised from 15 Lakhs to 20 Lakhs!
+        "Management":
+          "PG": 2000000        # Raised from 15 Lakhs to 20 Lakhs!
+          "UG": 1500000
+        "Pharmacy":
+          "UG": 3000000
+          "Diploma": 2000000
+        "Architecture & Town Planning":
+          "UG": 2500000
+        "Applied Arts & Crafts":
+          "UG": 2000000
+        "General Technical":
+          "Default": 2500000
+      category_concessions:
+        "Women": 0.20
+        "Minority": 0.20
+        "PwD": 0.20
+        "North-East": 0.50
+        "Normal": 0.00
+
+  - rule_id: "RULE-VALIDITY-TENURE-02"
+    description: "Mandatory Minimum Lock-in Validity Period"
+    description_hi: "अनिवार्य न्यूनतम लॉक-इन वैधता अवधि"
+    type: "validity_until"
+    severity: "CRITICAL"
+    handbook_reference: "APH 2025-26 Chapter I, Clause 1.7 [Placeholder]"
+    effective_from: "2025-06-01"
+    effective_to: null
+    applies_to:
+      institution_category: "ALL"
+      program_level: "ALL"
+    parameters:
+      mandatory_minimum_tenure_months: 120  # Raised from 96 (8 yrs) to 120 (10 yrs)!
+      tolerance_days_before_expiry: 30
+
+  - rule_id: "RULE-BANK-WHITELIST-03"
+    description: "Issuing Bank RBI Scheduled Commercial Classification"
+    description_hi: "जारीकर्ता बैंक आरबीआई अनुसूचित वाणिज्यिक वर्गीकरण"
+    type: "bank_whitelist"
+    severity: "HIGH"
+    handbook_reference: "APH 2025-26 Chapter II, Regulation 2.3 [Placeholder]"
+    effective_from: "2025-06-01"
+    effective_to: null
+    applies_to:
+      institution_category: "ALL"
+      program_level: "ALL"
+    parameters:
+      rbi_scheduled_commercial_banks:
+        - "State Bank of India"
+        - "Punjab National Bank"
+        - "Bank of Baroda"
+        - "Canara Bank"
+        - "Union Bank of India"
+        - "HDFC Bank"
+        - "ICICI Bank"
+        - "Axis Bank"
+        - "Kotak Mahindra Bank"
+        - "Bank of India"
+        - "Central Bank of India"
+        - "Indian Bank"
+        - "Bharat National Bank"
+        - "Apex Commercial Bank"
+        - "Hindustan Mercantile Bank"
+
+  - rule_id: "RULE-DOC-ENCLOSURES-04"
+    description: "Mandatory Regulatory Document Verification and Bank Confirmation Enclosure"
+    description_hi: "अनिवार्य विनियामक दस्तावेज़ सत्यापन और बैंक पुष्टि संलग्नक"
+    type: "required_document"
+    severity: "HIGH"
+    handbook_reference: "APH 2025-26 Annexure 4 [Placeholder]"
+    effective_from: "2025-06-01"
+    effective_to: null
+    applies_to:
+      institution_category: "ALL"
+      program_level: "ALL"
+    parameters:
+      required_doc_types:
+        - "FDR_CERTIFICATE"
+        - "BANK_CONFIRMATION_LETTER"
+      allow_substitute_declaration: false
+
+  - rule_id: "RULE-DATE-LOGIC-05"
+    description: "Deposit Date Sequence & Chronological Validity"
+    description_hi: "जमा तिथि अनुक्रम और कालानुक्रमिक वैधता"
+    type: "date_logic"
+    severity: "CRITICAL"
+    handbook_reference: "APH 2025-26 Chapter I, Clause 1.9 [Placeholder]"
+    effective_from: "2025-06-01"
+    effective_to: null
+    applies_to:
+      institution_category: "ALL"
+      program_level: "ALL"
+    parameters:
+      maturity_must_follow_issue: true
+      maximum_issue_tenure_years: 15
+      lien_clause_keywords:
+        - "regional officer"
+        - "aicte"
+        - "all india council for technical education"
+        - "lien"
+        - "pledged"
+
+  - rule_id: "RULE-RELEASE-CONDITION-06"
+    description: "Statutory Prerequisite Conditions for Deposit Release / Refund"
+    description_hi: "जमा विमुक्ति / वापसी के लिए वैधानिक पूर्व-शर्तें"
+    type: "release_condition"
+    severity: "CRITICAL"
+    handbook_reference: "APH 2025-26 Chapter I, Regulation 11 [Placeholder]"
+    effective_from: "2025-06-01"
+    effective_to: null
+    applies_to:
+      institution_category: "ALL"
+      program_level: "ALL"
+    parameters:
+      required_status_prior_to_release: "MATURED"
+      require_state_noc: true
+      require_university_noc: true
+      require_zero_pending_grievances: true
+      authorized_approver_role: "COMPETENT_AUTHORITY"

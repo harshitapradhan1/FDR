@@ -120,3 +120,4 @@ class DuplicateDetector:
             "total_duplicate_flags": len(exact_bank_fdr_matches) + len(sha256_identical_matches) + len(phash_visual_matches),
             "statutory_label": "Relationship requiring investigation, not proof of fraud."
         }
+
