@@ -53,3 +53,4 @@
 3. **Audit Immutability**:
    - Neither Administrator nor Competent Authority can edit or delete an audit log entry.
    - The ledger is append-only with $H_n = \text{SHA256}(H_{n-1} \parallel \text{event}_n)$.
+

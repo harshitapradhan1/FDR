@@ -91,3 +91,4 @@ flowchart TD
 | **10** | **Release Gating & Non-Destructive Renewal** | `fdr_state_machine.py`, `fdrs.py` (`renew`, `authorize-release`) | `FDRDetailModal.tsx` (Renew & Authorize Release) | `test_fdr_renewal_creates_linked_successor_and_supersedes`, `test_release_authorization_role_enforcement` | Step 10: Switch to Competent Authority, authorize release order |
 | **Bonus** | **Cryptographic Hash Chain Audit** | `backend/app/services/audit_service.py` ($H_n = \text{SHA256}(H_{n-1} \parallel e_n)$) | `AuditLedgerView.tsx` | `test_audit_ledger_verification` in `test_api_and_workflows.py` | Step 11: 1-click verify all blocks untampered |
 | **Bonus** | **Empirical Evaluation Harness** | `backend/app/evaluation/harness.py` | `EvaluationHarnessView.tsx` | `test_evaluation_harness_api` | Step 12: Run live benchmark: 100% F1, ~28ms latency |
+

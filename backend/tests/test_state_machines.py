@@ -104,3 +104,4 @@ def test_release_workflow_illegal_transitions():
     rec_sm = ReleaseWorkflowStateMachine(ReleaseStatus.RECOMMENDED_FOR_APPROVAL)
     with pytest.raises(PermissionError):
         rec_sm.trigger("APPROVE", actor_role="VERIFICATION_OFFICER")
+

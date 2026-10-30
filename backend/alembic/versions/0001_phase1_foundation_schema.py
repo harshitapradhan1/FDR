@@ -333,3 +333,4 @@ def downgrade() -> None:
     op.drop_table('banks')
     op.drop_table('users')
     op.drop_table('institutions')
+

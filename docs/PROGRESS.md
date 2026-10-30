@@ -34,3 +34,22 @@
 - Automated Demo Script: `scripts/demo_runner.py` executed cleanly via `make demo`
 - Database Migrations: Alembic migration `0001_phase1_foundation` applied and verified.
 
+---
+
+### 3. Phase 2 Completion: Synthetic Data & Ground Truth Benchmark
+- **Dataset Generator (`data/generator.py`)**:
+  - Deterministic pseudo-random generation (`SEED=42`).
+  - 80 institutions across 15 States/UTs, 164 FDR instruments, 328+ rendered PDF/scanned JPG files.
+  - 5 distinct bank layout engines (`BHARAT_NATIONAL_BANK`, `APEX_COMMERCIAL_BANK`, `GRAMIN_VIKAS_BANK`, `HINDUSTAN_MERCANTILE_BANK`, `PRAGATI_COOPERATIVE_BANK`).
+  - Physical scan noise simulation: OpenCV affine rotation (-1.5° to +1.5°), Gaussian blur kernel, Poisson noise, paper contrast curve.
+  - Injected 14 issue categories recorded in `data/synthetic/ground_truth.json`.
+  - Balanced split: ~32% clean pristine instruments, ~68% with 1-3 injected irregularities.
+  - Dedicated Hero Case: Rs 10 Lakhs, cross-institution duplicate, maturity date discrepancy vs bank confirmation letter, Adobe Photoshop metadata tamper flag.
+  - 5-year historical Lifecycle Passport trees for 5 institutions.
+- **Visual Contact Sheet (`docs/assets/contact_sheet.png`)**:
+  - 10 representative document renders demonstrating bank layout diversity, seals, signatures, Hindi/English typography, and watermarks.
+- **Seed Loader (`data/seed_loader.py` / `make seed` / `make data`)**:
+  - Seeds `ground_truth.json` directly into SQLite / PostgreSQL and local storage.
+- **Dataset Specification (`docs/DATASET.md`)**:
+  - Complete documentation of ground truth schema, metrics calculation protocol, and safety guardrails.
+

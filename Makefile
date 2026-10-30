@@ -1,4 +1,4 @@
-.PHONY: up down migrate seed test demo run-backend run-frontend clean help
+.PHONY: up down migrate seed data test demo run-backend run-frontend clean help
 
 help:
 	@echo "DepoSafe - AICTE Regulation Bureau FDR Intelligence Portal"
@@ -7,7 +7,8 @@ help:
 	@echo "  make up            - Launch all services via docker-compose"
 	@echo "  make down          - Stop all docker services"
 	@echo "  make migrate       - Apply Alembic migrations"
-	@echo "  make seed          - Initialize and seed database with synthetic FDRs"
+	@echo "  make data          - Generate synthetic dataset (80 institutions, 164 FDRs) and seed DB"
+	@echo "  make seed          - Seed database from synthetic dataset"
 	@echo "  make test          - Run complete unit, forensic and E2E test suites"
 	@echo "  make demo          - Run 90-second automated demo sequence in terminal"
 	@echo "  make run-backend   - Run FastAPI backend locally (port 8000)"
@@ -23,8 +24,12 @@ down:
 migrate:
 	PYTHONPATH=. backend/venv/bin/alembic -c backend/alembic.ini upgrade head
 
+data:
+	PYTHONPATH=. backend/venv/bin/python3 data/generator.py
+	PYTHONPATH=. backend/venv/bin/python3 data/seed_loader.py
+
 seed:
-	PYTHONPATH=. backend/venv/bin/python3 -c "from backend.app.core.database import SessionLocal; from backend.app.services.seed_service import seed_database_if_empty; db = SessionLocal(); seed_database_if_empty(db); print('Database seeded successfully with authentic synthetic FDRs!')"
+	PYTHONPATH=. backend/venv/bin/python3 data/seed_loader.py
 
 test:
 	PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v

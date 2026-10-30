@@ -86,3 +86,4 @@ class RiskScorer(ABC):
     def compute_review_priority(self, db: Session, fdr_id: int) -> Dict[str, Any]:
         """Computes advisory review priority score with explainable flags."""
         pass
+
