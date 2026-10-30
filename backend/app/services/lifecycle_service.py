@@ -306,3 +306,4 @@ def build_fdr_lifecycle_passport(db: Session, fdr_id: int) -> Dict[str, Any]:
         "total_documents_count": len(docs),
         "total_timeline_events": len(timeline)
     }
+

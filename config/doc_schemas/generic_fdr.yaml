@@ -1,0 +1,38 @@
+layout_id: GENERIC_FDR
+bank_name: "Generic Bank Fallback"
+aliases:
+  - "GENERIC"
+  - "FALLBACK"
+header_keywords:
+  - "FIXED DEPOSIT"
+  - "TERM DEPOSIT"
+  - "DEPOSIT RECEIPT"
+  - "SECURITY DEPOSIT"
+doc_types:
+  - FDR_CERTIFICATE
+field_patterns:
+  fdr_number:
+    regex: "(?:FDR|Deposit|Account|Receipt|Certificate)\\s*(?:Account)?\\s*(?:No\\.?|Number|#)?[:\\s\\n]*([A-Z0-9\\-\\/]{6,30})"
+    expected_bbox: [120, 100, 120, 20]
+  amount:
+    regex: "(?:Deposit\\s*Amount[:\\s\\n]*[^\\d\\n]*|₹|Rs\\.?|INR\\s*)([\\d,]+(?:\\.\\d{2})?)"
+    expected_bbox: [350, 100, 100, 20]
+  amount_words:
+    regex: "(?:Rupees|Amount\\s*in\\s*words|In\\s*Words)[\\s:]*([A-Za-z\\s]+(?:Lakh|Crore|Thousand|Only))"
+    expected_bbox: [120, 130, 400, 20]
+  issue_date:
+    regex: "(?:Date\\s*of\\s*Issue|Issue\\s*Date|Effective\\s*Date)[:\\s]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [120, 130, 100, 20]
+  maturity_date:
+    regex: "(?:Date\\s*of\\s*Maturity|Maturity\\s*Date|Due\\s*Date)[:\\s]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [350, 130, 100, 20]
+  interest_rate:
+    regex: "(?:Interest\\s*Rate|Rate|ROI)[:\\s]*([\\d\\.]+)\\s*%"
+    expected_bbox: [120, 160, 80, 20]
+  depositor_name:
+    regex: "(?:Account\\s*Holder|In\\s*the\\s*name\\s*of|Depositor)[:\\s]*([^\\n,]+)"
+    expected_bbox: [120, 180, 200, 20]
+  lien_clause:
+    regex: "(Pledged.*?Regional\\s*Officer.*?(?:AICTE).*?\\.)"
+    expected_bbox: [120, 200, 400, 40]
+confidence_baseline: 0.82

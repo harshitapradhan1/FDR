@@ -52,3 +52,42 @@ def evaluate_maturities_job():
     finally:
         db.close()
 
+
+@celery_app.task
+def process_document_pipeline_task(fdr_id: int, doc_id: int, file_path: str, declared_details: dict = None):
+    """
+    Async Celery task executing the complete AI document pipeline:
+    OCR/text -> type classification -> layout extraction -> validation -> database persistence.
+    """
+    from backend.app.services.document_pipeline import run_document_ai_pipeline, persist_pipeline_results_to_db
+    
+    db = SessionLocal()
+    try:
+        pipeline_result = run_document_ai_pipeline(file_path, declared_details)
+        persist_pipeline_results_to_db(db, fdr_id, doc_id, pipeline_result)
+
+        record_audit_event(
+            db=db,
+            event_type="ASYNC_CELERY_AI_PIPELINE_COMPLETED",
+            entity_type="FDR_DOCUMENT",
+            entity_id=str(doc_id),
+            actor_id=None,
+            actor_role="CELERY_WORKER",
+            payload={
+                "fdr_id": fdr_id,
+                "doc_type": pipeline_result["document_classification"]["doc_type"],
+                "layout_id": pipeline_result["layout_classification"]["layout_id"],
+                "validation_status": pipeline_result["field_validation"]["overall_status"],
+                "low_confidence_fields": pipeline_result["low_confidence_fields"]
+            }
+        )
+        return {
+            "status": "COMPLETED",
+            "doc_id": doc_id,
+            "validation_status": pipeline_result["field_validation"]["overall_status"],
+            "ui_wording": pipeline_result["field_validation"]["ui_wording"]
+        }
+    finally:
+        db.close()
+
+

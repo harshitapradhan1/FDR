@@ -25,12 +25,13 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **28 passed in 1.94s**
+- Total Pytest Test Cases: **33 passed in 2.53s**
 - Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
 - End-to-End Critical Flows: `backend/tests/test_e2e_flows.py` (3 passed)
 - Phase 3 Core Lifecycle Tests: `backend/tests/test_phase3_lifecycle.py` (8 passed)
+- Phase 4 AI Document Pipeline Tests: `backend/tests/test_phase4_ai_pipeline.py` (5 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
 - Automated Demo Script: `scripts/demo_runner.py` executed cleanly via `make demo`
 - Database Migrations: Alembic migration `0001_phase1_foundation` applied and verified.
@@ -78,4 +79,41 @@
 - **Secure Expiring Download URLs**:
   - Endpoint: `GET /fdr/{fdr_id}/documents/{document_id}/download-url` generating HMAC-SHA256 signed expiring tokens (15 minutes).
   - Endpoint: `GET /fdr/documents/download?token=...` serving verifiable downloads with expiry and signature enforcement.
+
+---
+
+### 5. Phase 4 Completion: AI Document Pipeline (Async Celery)
+- **Async AI Document Pipeline (`backend/app/services/document_pipeline.py`, `celery_worker.py`)**:
+  - Full end-to-end extraction pipeline: Upload &rarr; Size & Magic Byte Check &rarr; SHA-256 Hashing &rarr; PyMuPDF/OpenCV Preprocessing &rarr; Document Type Classification &rarr; Bank Layout Matching &rarr; Layout-Aware Field Extraction &rarr; Normalization &rarr; Field Confidence Scoring &rarr; Statutory Field Validation Engine.
+  - Asynchronous background execution powered by Celery (`process_document_pipeline_task`).
+  - Overlay-ready bounding box coordinates (`bbox: [x0, y0, x1, y1]`) returned in API response for visual PDF preview.
+  - Provenance updated to `AI_EXTRACTED` with confidence scores; low-confidence fields (< 0.70) automatically flagged `needs_human_confirmation`.
+- **Bank Layout Schemas (`config/doc_schemas/*.yaml`)**:
+  - Modular YAML schemas for all 5 fictional banks (`BHARAT_NATIONAL_BANK`, `APEX_COMMERCIAL_BANK`, `GRAMIN_VIKAS_BANK`, `HINDUSTAN_MERCANTILE_BANK`, `PRAGATI_COOPERATIVE_BANK`) plus generic fallback (`generic_fdr.yaml`).
+  - Supports custom anchor phrases, regexes, and coordinate hints.
+- **Normalization Engine (`backend/app/services/normalizer.py`)**:
+  - Translates Devanagari numerals (`०-९` &rarr; `0-9`) and Hindi months (`जनवरी` &rarr; `01`).
+  - Standardizes dates to ISO `YYYY-MM-DD`.
+  - Normalizes Indian currency strings (e.g. `10,00,000.00` &rarr; `1000000.0`).
+  - Mathematical words-to-figures reconciliation (e.g. `Ten Lakh Rupees` vs `10,00,000`).
+- **Pluggable Extractor Architecture (`backend/app/extractors/`)**:
+  - `TemplateExtractor`: Deterministic pattern matching using YAML bank schemas and proximity search.
+  - `LLMLayoutLMExtractor`: AI/LLM fallback wrapped with strict Pydantic JSON schema validation (`StrictLLMOutputSchema`) rejecting unvalidated or malformed responses.
+- **Field Validation Engine (`backend/app/services/field_validator.py`)**:
+  - Evaluates mandatory presence, alphanumeric FDR number patterns, positive amounts, words-figures consistency, chronological dates (issue &le; maturity), recognized bank directory check, and match against institution-declared details.
+  - Outputs statutory verdicts: `PASSED`, `FAILED`, `NOT_CONFIRMED` with explainable failure explanations.
+  - Enforces mandatory SIH statutory wording: `"available checks passed"`, never `"genuine"`.
+- **Human-in-the-Loop Corrections & Safe Self-Improving Extraction**:
+  - Endpoint `POST /fdr/{fdr_id}/correct-field` enables authorized officers/institutions to submit field corrections with mandatory justification.
+  - Updates field provenance to `OFFICER_VERIFIED` and logs an append-only audit trail event.
+  - Appends correction record to `data/corrections/correction_samples.jsonl`.
+  - Safe candidate model evaluation script (`scripts/evaluate_candidate_extractor.py`): tests candidate models/schemas on held-out samples and only bumps version in `config/model_versions.json` if non-regressing metrics are verified (no silent auto-learning).
+- **Comprehensive Ground Truth Benchmark (`docs/metrics/extraction.md`)**:
+  - Evaluated on all 164 instruments across 80 institutions in `data/synthetic/ground_truth.json`:
+    - **Macro F1 Score: 90.51%**
+    - **Macro Precision: 87.68%**
+    - **Macro Recall: 94.93%**
+    - **Document Classification Accuracy: 95.73%**
+    - **Average Processing Latency: 26.83 ms**
+
 

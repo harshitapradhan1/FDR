@@ -1,0 +1,38 @@
+layout_id: GRAMIN_VIKAS_BANK
+bank_name: "Gramin Vikas Bank"
+aliases:
+  - "GRAMIN VIKAS BANK"
+  - "ग्रामीण विकास बैंक"
+  - "GVB"
+header_keywords:
+  - "ग्रामीण विकास बैंक"
+  - "GRAMIN VIKAS BANK"
+  - "मियादी जमा रसीद"
+doc_types:
+  - FDR_CERTIFICATE
+field_patterns:
+  fdr_number:
+    regex: "(?:जमा\\s*रसीद\\s*संख्या|रसीद\\s*क्र\\.?|FDR\\s*No\\.?)[\\s:]*([A-Z0-9\\-\\/]{6,25})"
+    expected_bbox: [50, 115, 230, 25]
+  amount:
+    regex: "(?:जमा\\s*राशि|Deposit\\s*Amount)[\\s:]*(?:Rs\\.?|₹|रु\\.)?[\\s]*([\\d,]+(?:\\.\\d{2})?)"
+    expected_bbox: [350, 115, 200, 25]
+  amount_words:
+    regex: "(?:शब्दों\\s*में|Rupees\\s*in\\s*words)[\\s:]*([^\\n]+(?:लाख|हजार|रुपये|Only|Lakh))"
+    expected_bbox: [50, 145, 500, 25]
+  issue_date:
+    regex: "(?:जारी\\s*दिनांक|Date\\s*of\\s*Issue)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [50, 175, 200, 25]
+  maturity_date:
+    regex: "(?:परिपक्वता\\s*दिनांक|Date\\s*of\\s*Maturity)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [350, 175, 200, 25]
+  interest_rate:
+    regex: "(?:ब्याज\\s*दर|Interest\\s*Rate)[\\s:]*([\\d\\.]+)\\s*%"
+    expected_bbox: [50, 205, 150, 25]
+  depositor_name:
+    regex: "(?:खाताधारक|जमाकर्ता|Depositor)[\\s:]*([^\\n,]+)"
+    expected_bbox: [50, 235, 400, 25]
+  lien_clause:
+    regex: "(क्षेत्रीय\\s*अधिकारी.*?एआईसीटीई.*?संबद्ध|Pledged\\s*jointly\\s*to\\s*Regional\\s*Officer.*?AICTE.*?\\.)"
+    expected_bbox: [50, 275, 500, 45]
+confidence_baseline: 0.93

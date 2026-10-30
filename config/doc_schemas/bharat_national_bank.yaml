@@ -1,0 +1,38 @@
+layout_id: BHARAT_NATIONAL_BANK
+bank_name: "Bharat National Bank"
+aliases:
+  - "BHARAT NATIONAL BANK"
+  - "भारत नेशनल बैंक"
+  - "BNB"
+header_keywords:
+  - "BHARAT NATIONAL BANK"
+  - "भारत नेशनल बैंक"
+  - "TERM DEPOSIT RECEIPT"
+doc_types:
+  - FDR_CERTIFICATE
+field_patterns:
+  fdr_number:
+    regex: "(?:FDR\\s*No\\.?|Receipt\\s*No\\.?|Certificate\\s*No\\.?)[\\s:]*([A-Z0-9\\-\\/]{6,25})"
+    expected_bbox: [50, 110, 220, 25]
+  amount:
+    regex: "(?:Deposit\\s*Amount|Principal\\s*Sum)[\\s:]*(?:Rs\\.?|₹|INR)?[\\s]*([\\d,]+(?:\\.\\d{2})?)"
+    expected_bbox: [350, 110, 200, 25]
+  amount_words:
+    regex: "(?:Rupees|Amount\\s*in\\s*words)[\\s:]*([A-Za-z\\s]+(?:Lakh|Crore|Thousand|Hundred|Only))"
+    expected_bbox: [50, 140, 500, 25]
+  issue_date:
+    regex: "(?:Date\\s*of\\s*Issue|Issue\\s*Date)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [50, 170, 200, 25]
+  maturity_date:
+    regex: "(?:Date\\s*of\\s*Maturity|Maturity\\s*Date)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [350, 170, 200, 25]
+  interest_rate:
+    regex: "(?:Rate\\s*of\\s*Interest|Interest\\s*Rate|ROI)[\\s:]*([\\d\\.]+)\\s*%"
+    expected_bbox: [50, 200, 150, 25]
+  depositor_name:
+    regex: "(?:Depositor|Account\\s*Holder|In\\s*the\\s*name\\s*of)[\\s:]*([^\\n,]+)"
+    expected_bbox: [50, 230, 400, 25]
+  lien_clause:
+    regex: "(Pledged\\s*(?:under\\s*lien)?\\s*(?:jointly)?\\s*to\\s*Regional\\s*Officer.*?(?:AICTE|Council).*?\\.)"
+    expected_bbox: [50, 270, 500, 45]
+confidence_baseline: 0.95

@@ -254,6 +254,19 @@ class FieldProvenance(Base):
 
     fdr = relationship("FDR", back_populates="provenance_fields")
 
+class CorrectionRecord(Base):
+    __tablename__ = "correction_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fdr_id = Column(Integer, ForeignKey("fdr_records.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    field_name = Column(String(100), nullable=False)
+    extracted_value = Column(String(500), nullable=True)
+    corrected_value = Column(String(500), nullable=False)
+    correction_reason = Column(Text, nullable=True)
+    corrected_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class BankVerificationRecord(Base):
     __tablename__ = "verifications"
 

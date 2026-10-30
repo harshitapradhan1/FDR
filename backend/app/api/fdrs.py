@@ -14,15 +14,18 @@ from backend.app.core.security import get_current_user, require_role
 from backend.app.models.deposafe_models import (
     User, UserRole, FDR, FDRDocument, FieldProvenance,
     BankVerificationRecord, Institution, FDRStatus,
-    ProvenanceLevel, BankVerificationStatus, AuditLog
+    ProvenanceLevel, BankVerificationStatus, AuditLog,
+    CorrectionRecord
 )
 from backend.app.schemas.deposafe_schemas import (
     FDRCreate, FDROut, FDRDetailOut, FDRRenewRequest,
     FDRReleaseRequest, FDRReleaseApproval, OfficerOverrideRequest,
     BankVerifyRequest, ManualVerificationRequest, ProvenanceVerifyRequest,
-    IntegrityCheckOut, IntegrityCheckDocumentResult, SignedDownloadUrlOut
+    IntegrityCheckOut, IntegrityCheckDocumentResult, SignedDownloadUrlOut,
+    FieldCorrectionRequest, FieldCorrectionOut
 )
 from backend.app.services.document_ai import extract_fdr_fields_from_pdf
+from backend.app.services.document_pipeline import run_document_ai_pipeline, persist_pipeline_results_to_db
 from backend.app.services.risk_engine import compute_review_priority
 from backend.app.services.audit_service import record_audit_event
 from backend.app.rules.compliance_engine import get_active_rule, evaluate_fdr_compliance
@@ -298,10 +301,16 @@ async def upload_fdr_document(
     with open(file_path, "wb") as buffer:
         buffer.write(file_bytes)
 
-    # Run Document AI
-    ai_results = extract_fdr_fields_from_pdf(file_path)
-    forensics = ai_results["forensics"]
-    fields = ai_results["fields"]
+    # Run full AI Document Pipeline
+    declared_details = {
+        "fdr_number": fdr.fdr_number,
+        "amount": fdr.amount,
+        "bank_name": fdr.bank_name
+    }
+    pipeline_result = run_document_ai_pipeline(file_path, declared_details=declared_details)
+    forensics = pipeline_result["forensics"]
+    fields = pipeline_result["extracted_fields"]
+    doc_type_detected = pipeline_result["document_classification"]["doc_type"]
 
     doc_record = FDRDocument(
         fdr_id=fdr.id,
@@ -313,7 +322,7 @@ async def upload_fdr_document(
         file_hash=file_sha256,
         perceptual_hash=forensics.get("perceptual_hash", ""),
         mime_type=verified_mime,
-        doc_type=doc_type,
+        doc_type=doc_type_detected,
         file_size_bytes=len(file_bytes),
         forensic_metadata=forensics,
         uploaded_by=current_user.id
@@ -322,39 +331,9 @@ async def upload_fdr_document(
     db.commit()
     db.refresh(doc_record)
 
+    persist_pipeline_results_to_db(db, fdr.id, doc_record.id, pipeline_result)
+
     doc_unique_id = generate_document_identifier(doc_record.id, doc_record.created_at.year)
-
-    # Update 4-level Provenance with AI_EXTRACTED values and mismatch detection
-    for prov in fdr.provenance_fields:
-        if prov.field_name in fields and fields[prov.field_name]["value"] is not None:
-            extracted_val = str(fields[prov.field_name]["value"])
-            prov.ai_extracted_value = extracted_val
-            prov.ai_confidence = fields[prov.field_name]["confidence"]
-            prov.bounding_box = fields[prov.field_name]["bbox"]
-
-            sub_norm = (prov.submitted_value or "").strip().lower()
-            ext_norm = extracted_val.strip().lower()
-
-            if prov.field_name == "amount":
-                try:
-                    sub_num = float(sub_norm)
-                    ext_num = float(ext_norm)
-                    has_mismatch = abs(sub_num - ext_num) > 1.0
-                except ValueError:
-                    has_mismatch = (sub_norm != ext_norm)
-            elif prov.field_name == "lien_marked":
-                sub_bool = (sub_norm in ["yes", "true", "1"])
-                ext_bool = (ext_norm in ["yes", "true", "1"])
-                has_mismatch = (sub_bool != ext_bool)
-            else:
-                has_mismatch = (sub_norm != ext_norm)
-
-            if has_mismatch:
-                prov.status = ProvenanceLevel.MISMATCH
-                prov.mismatch_reason = f"Discrepancy: Institution submitted '{prov.submitted_value}', AI document scan extracted '{extracted_val}'."
-            else:
-                prov.status = ProvenanceLevel.AI_EXTRACTED
-    db.commit()
 
     # Re-evaluate compliance and review priority
     active_rule = get_active_rule(db)
@@ -385,12 +364,13 @@ async def upload_fdr_document(
             "mime_type": verified_mime,
             "file_name": cleaned_filename,
             "producer_flagged": forensics.get("producer_flagged", False),
-            "review_priority_score": fdr.review_priority_score
+            "validation_status": pipeline_result["field_validation"]["overall_status"],
+            "ui_wording": pipeline_result["field_validation"]["ui_wording"]
         }
     )
 
     return {
-        "message": "Document securely uploaded and stored immutably in chain of custody.",
+        "message": "Document securely uploaded and AI intelligence pipeline completed.",
         "document_id": doc_record.id,
         "document_identifier": doc_unique_id,
         "fdr_id": fdr.id,
@@ -398,8 +378,142 @@ async def upload_fdr_document(
         "sha256": file_sha256,
         "mime_type": verified_mime,
         "forensics": forensics,
+        "document_classification": pipeline_result["document_classification"],
+        "layout_classification": pipeline_result["layout_classification"],
         "extracted_fields": fields,
+        "low_confidence_fields": pipeline_result["low_confidence_fields"],
+        "field_validation": pipeline_result["field_validation"],
         "review_priority": risk_info
+    }
+
+
+# --------------------------------------------------------------------------
+# 3b. Field Correction & Safe Self-Improving Extraction Sample Logging
+# --------------------------------------------------------------------------
+@router.post("/{fdr_id}/correct-field", response_model=FieldCorrectionOut)
+def record_field_correction(
+    fdr_id: int,
+    req: FieldCorrectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Cannot correct fields for another institution"
+        )
+
+    prov = db.query(FieldProvenance).filter(
+        FieldProvenance.fdr_id == fdr.id,
+        FieldProvenance.field_name == req.field_name
+    ).first()
+
+    extracted_val = prov.ai_extracted_value if prov else None
+    
+    if prov:
+        prov.officer_verified_value = req.corrected_value
+        prov.status = ProvenanceLevel.OFFICER_VERIFIED
+        prov.mismatch_reason = f"Correction by {current_user.full_name}: {req.correction_reason}"
+
+    if hasattr(fdr, req.field_name):
+        try:
+            if req.field_name == "amount":
+                setattr(fdr, req.field_name, float(req.corrected_value))
+            elif req.field_name in ["issue_date", "maturity_date"]:
+                setattr(fdr, req.field_name, date.fromisoformat(req.corrected_value))
+            else:
+                setattr(fdr, req.field_name, req.corrected_value)
+        except Exception:
+            pass
+
+    latest_doc = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).order_by(FDRDocument.version.desc()).first()
+    doc_id = latest_doc.id if latest_doc else None
+
+    correction = CorrectionRecord(
+        fdr_id=fdr.id,
+        document_id=doc_id,
+        field_name=req.field_name,
+        extracted_value=extracted_val,
+        corrected_value=req.corrected_value,
+        correction_reason=req.correction_reason,
+        corrected_by=current_user.id
+    )
+    db.add(correction)
+    db.commit()
+    db.refresh(correction)
+
+    # Safe Self-Improving Extraction: append labelled training sample to disk
+    corrections_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/corrections"))
+    os.makedirs(corrections_dir, exist_ok=True)
+    sample_file = os.path.join(corrections_dir, "correction_samples.jsonl")
+    sample_data = {
+        "correction_id": correction.id,
+        "fdr_id": fdr.id,
+        "document_id": doc_id,
+        "field_name": req.field_name,
+        "extracted_value": extracted_val,
+        "ground_truth_corrected_value": req.corrected_value,
+        "reason": req.correction_reason,
+        "corrected_by_user_id": current_user.id,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    import json
+    with open(sample_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(sample_data) + "\n")
+
+    record_audit_event(
+        db=db,
+        event_type="FIELD_CORRECTION_RECORD_CREATED",
+        entity_type="FIELD_PROVENANCE",
+        entity_id=str(prov.id if prov else correction.id),
+        actor_id=current_user.id,
+        actor_role=current_user.role.value,
+        payload={
+            "fdr_id": fdr.id,
+            "field_name": req.field_name,
+            "extracted_value": extracted_val,
+            "corrected_value": req.corrected_value,
+            "reason": req.correction_reason
+        }
+    )
+
+    return correction
+
+
+# --------------------------------------------------------------------------
+# 3c. Pipeline Inspection & Visual BBox Preview
+# --------------------------------------------------------------------------
+@router.get("/{fdr_id}/pipeline-results")
+def get_fdr_pipeline_results(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    doc = db.query(FDRDocument).filter(FDRDocument.fdr_id == fdr.id).order_by(FDRDocument.version.desc()).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="No document found for this FDR")
+
+    pipeline_result = run_document_ai_pipeline(doc.file_path, {
+        "fdr_number": fdr.fdr_number,
+        "amount": fdr.amount,
+        "bank_name": fdr.bank_name
+    })
+    return {
+        "fdr_id": fdr.id,
+        "document_id": doc.id,
+        "file_name": doc.file_name,
+        **pipeline_result
     }
 
 

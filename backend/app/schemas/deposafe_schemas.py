@@ -201,3 +201,24 @@ class PaginatedFDROut(BaseModel):
     page_size: int
     total_pages: int
     items: List[FDROut]
+
+# Phase 4: Corrections & Validation Schemas
+class FieldCorrectionRequest(BaseModel):
+    field_name: str
+    corrected_value: str
+    correction_reason: Optional[str] = "Human verification adjustment"
+
+class FieldCorrectionOut(BaseModel):
+    id: int
+    fdr_id: int
+    document_id: Optional[int] = None
+    field_name: str
+    extracted_value: Optional[str] = None
+    corrected_value: str
+    correction_reason: Optional[str] = None
+    corrected_by: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+

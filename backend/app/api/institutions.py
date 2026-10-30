@@ -128,3 +128,4 @@ def get_institution_fdrs(
         raise HTTPException(status_code=404, detail="Institution not found")
 
     return db.query(FDR).filter(FDR.institution_id == institution_id).order_by(FDR.id.desc()).all()
+

@@ -1,0 +1,37 @@
+layout_id: APEX_COMMERCIAL_BANK
+bank_name: "Apex Commercial Bank"
+aliases:
+  - "APEX COMMERCIAL BANK"
+  - "एपेक्स कमर्शियल बैंक"
+  - "ACB"
+header_keywords:
+  - "APEX COMMERCIAL BANK"
+  - "FIXED DEPOSIT ADVICE"
+doc_types:
+  - FDR_CERTIFICATE
+field_patterns:
+  fdr_number:
+    regex: "(?:Deposit\\s*Advice\\s*No\\.?|FDR\\s*Ref|Certificate\\s*#)[\\s:]*([A-Z0-9\\-\\/]{6,25})"
+    expected_bbox: [50, 105, 230, 25]
+  amount:
+    regex: "(?:Deposit\\s*Amount|Face\\s*Value)[\\s:]*(?:Rs\\.?|₹|INR)?[\\s]*([\\d,]+(?:\\.\\d{2})?)"
+    expected_bbox: [360, 105, 190, 25]
+  amount_words:
+    regex: "(?:In\\s*Words|Rupees)[\\s:]*([A-Za-z\\s]+(?:Lakh|Crore|Thousand|Only))"
+    expected_bbox: [50, 135, 500, 25]
+  issue_date:
+    regex: "(?:Effective\\s*Date|Date\\s*of\\s*Deposit|Issue\\s*Date)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [50, 165, 200, 25]
+  maturity_date:
+    regex: "(?:Maturity\\s*Date|Due\\s*Date)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [360, 165, 190, 25]
+  interest_rate:
+    regex: "(?:Yield|Interest\\s*Rate|Coupon)[\\s:]*([\\d\\.]+)\\s*%"
+    expected_bbox: [50, 195, 150, 25]
+  depositor_name:
+    regex: "(?:Customer\\s*Name|Beneficiary|Depositor)[\\s:]*([^\\n,]+)"
+    expected_bbox: [50, 225, 400, 25]
+  lien_clause:
+    regex: "(Lien\\s*noted\\s*in\\s*favour\\s*of\\s*Regional\\s*Officer.*?(?:AICTE).*?\\.)"
+    expected_bbox: [50, 265, 500, 45]
+confidence_baseline: 0.94

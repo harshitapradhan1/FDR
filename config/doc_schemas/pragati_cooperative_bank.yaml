@@ -1,0 +1,38 @@
+layout_id: PRAGATI_COOPERATIVE_BANK
+bank_name: "Pragati Cooperative Bank"
+aliases:
+  - "PRAGATI COOPERATIVE BANK"
+  - "प्रगति सहकारी बैंक"
+  - "PCB"
+header_keywords:
+  - "PRAGATI COOPERATIVE BANK"
+  - "प्रगति सहकारी बैंक"
+  - "TERM DEPOSIT VOUCHER"
+doc_types:
+  - FDR_CERTIFICATE
+field_patterns:
+  fdr_number:
+    regex: "(?:Voucher\\s*No\\.?|FDR\\s*No\\.?|रसीद\\s*संख्या)[\\s:]*([A-Z0-9\\-\\/]{6,25})"
+    expected_bbox: [50, 110, 220, 25]
+  amount:
+    regex: "(?:Deposit\\s*Amount|जमा\\s*राशि)[\\s:]*(?:Rs\\.?|₹|रु\\.)?[\\s]*([\\d,]+(?:\\.\\d{2})?)"
+    expected_bbox: [350, 110, 200, 25]
+  amount_words:
+    regex: "(?:Rupees|शब्दों\\s*में)[\\s:]*([^\\n]+(?:लाख|हजार|Lakh|Only))"
+    expected_bbox: [50, 140, 500, 25]
+  issue_date:
+    regex: "(?:Date\\s*of\\s*Issue|जारी\\s*दिनांक)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [50, 170, 200, 25]
+  maturity_date:
+    regex: "(?:Maturity\\s*Date|परिपक्वता\\s*दिनांक)[\\s:]*([0-9a-zA-Z\\-\\/]{8,15})"
+    expected_bbox: [350, 170, 200, 25]
+  interest_rate:
+    regex: "(?:Interest\\s*Rate|ब्याज\\s*दर)[\\s:]*([\\d\\.]+)\\s*%"
+    expected_bbox: [50, 200, 150, 25]
+  depositor_name:
+    regex: "(?:Member\\s*Name|Depositor|जमाकर्ता)[\\s:]*([^\\n,]+)"
+    expected_bbox: [50, 230, 400, 25]
+  lien_clause:
+    regex: "(Pledged\\s*jointly\\s*to\\s*Regional\\s*Officer.*?(?:AICTE).*?\\.|क्षेत्रीय\\s*अधिकारी.*?एआईसीटीई.*?\\.)"
+    expected_bbox: [50, 270, 500, 45]
+confidence_baseline: 0.92
