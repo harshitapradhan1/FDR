@@ -180,3 +180,4 @@ def persist_pipeline_results_to_db(
                 prov.status = ProvenanceLevel.AI_EXTRACTED
 
     db.commit()
+

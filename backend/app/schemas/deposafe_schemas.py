@@ -49,17 +49,89 @@ class InstitutionOut(InstitutionCreate):
         from_attributes = True
 
 # Provenance
+class ProvenanceBadgeStyle(BaseModel):
+    source: str
+    label: str
+    bg_class: str
+    text_class: str
+    border_class: str
+    hex_color: str
+
+PROVENANCE_BADGE_MAP = {
+    "SUBMITTED": ProvenanceBadgeStyle(
+        source="SUBMITTED",
+        label="Submitted (Institution)",
+        bg_class="bg-blue-100",
+        text_class="text-blue-800",
+        border_class="border-blue-300",
+        hex_color="#2563EB"
+    ),
+    "AI_EXTRACTED": ProvenanceBadgeStyle(
+        source="AI_EXTRACTED",
+        label="AI Extracted (OCR/Layout)",
+        bg_class="bg-purple-100",
+        text_class="text-purple-800",
+        border_class="border-purple-300",
+        hex_color="#9333EA"
+    ),
+    "BANK_CONFIRMED": ProvenanceBadgeStyle(
+        source="BANK_CONFIRMED",
+        label="Bank Confirmed (CBS/SFMS)",
+        bg_class="bg-emerald-100",
+        text_class="text-emerald-800",
+        border_class="border-emerald-300",
+        hex_color="#059669"
+    ),
+    "OFFICER_VERIFIED": ProvenanceBadgeStyle(
+        source="OFFICER_VERIFIED",
+        label="Officer Verified (Human-in-Loop)",
+        bg_class="bg-amber-100",
+        text_class="text-amber-800",
+        border_class="border-amber-300",
+        hex_color="#D97706"
+    ),
+    "MISMATCH": ProvenanceBadgeStyle(
+        source="MISMATCH",
+        label="Conflict / Mismatch Detected",
+        bg_class="bg-rose-100",
+        text_class="text-rose-800",
+        border_class="border-rose-300",
+        hex_color="#E11D48"
+    ),
+    "SOURCE_UNAVAILABLE": ProvenanceBadgeStyle(
+        source="SOURCE_UNAVAILABLE",
+        label="Source Unavailable",
+        bg_class="bg-slate-100",
+        text_class="text-slate-800",
+        border_class="border-slate-300",
+        hex_color="#64748B"
+    )
+}
+
 class FieldProvenanceOut(BaseModel):
     id: int
     field_name: str
-    submitted_value: Optional[str]
-    ai_extracted_value: Optional[str]
-    bank_confirmed_value: Optional[str]
-    officer_verified_value: Optional[str]
+    submitted_value: Optional[str] = None
+    ai_extracted_value: Optional[str] = None
+    bank_confirmed_value: Optional[str] = None
+    officer_verified_value: Optional[str] = None
+
+    submitted_at: Optional[datetime] = None
+    ai_extracted_at: Optional[datetime] = None
+    bank_confirmed_at: Optional[datetime] = None
+    officer_verified_at: Optional[datetime] = None
+
+    submitted_by: Optional[str] = None
+    ai_extracted_by: Optional[str] = None
+    bank_confirmed_by: Optional[str] = None
+    officer_verified_by: Optional[str] = None
+
     status: ProvenanceLevel
-    ai_confidence: float
-    bounding_box: Optional[Any]
-    mismatch_reason: Optional[str]
+    ai_confidence: float = 1.0
+    bounding_box: Optional[Any] = None
+    mismatch_reason: Optional[str] = None
+    conflicts: List[Any] = []
+    badge_style: Optional[ProvenanceBadgeStyle] = None
 
     class Config:
         from_attributes = True
@@ -68,6 +140,42 @@ class ProvenanceVerifyRequest(BaseModel):
     field_name: str
     verified_value: str
     officer_notes: Optional[str] = None
+
+class ManualVerificationRequest(BaseModel):
+    fdr_id: Optional[int] = None
+    method: Optional[str] = "OFFICIAL_PORTAL_VISIT"  # OFFICIAL_PORTAL_VISIT, BRANCH_VISIT, REGISTERED_EMAIL_CONFIRMATION, PHONE_DISPATCH, WRITTEN_DISPATCH
+    reference_id: Optional[str] = None
+    remarks: Optional[str] = "Manual verification recorded"
+    evidence_document_id: Optional[int] = None
+    verified_fields: Optional[Dict[str, str]] = None
+    evidence_type: Optional[str] = None  # Backward compatibility
+    evidence_details: Optional[Dict[str, Any]] = None  # Backward compatibility
+
+class BankVerifyRequest(BaseModel):
+    fdr_id: Optional[int] = None
+    force_adapter: Optional[str] = None
+    scenario: Optional[str] = "SUCCESS"  # SUCCESS, MISMATCH, NOT_FOUND, TIMEOUT, RATE_LIMIT, DOWNTIME, SIGNED_RESPONSE
+
+class ReconciliationEvidenceOut(BaseModel):
+    doc_type: str
+    document_id: Optional[int] = None
+    file_name: str
+    value: Optional[str] = None
+    page: int = 1
+    bbox: Optional[List[float]] = None
+
+class FieldReconciliationOut(BaseModel):
+    field_name: str
+    status: str  # MATCH, MISMATCH, SINGLE_SOURCE, NOT_FOUND
+    discrepancy_details: Optional[str] = None
+    evidence: List[ReconciliationEvidenceOut] = []
+
+class ReconciliationResponseOut(BaseModel):
+    fdr_id: int
+    fdr_number: str
+    institution_id: int
+    reconciliation_summary: Dict[str, Any]
+    reconciliation_table: List[FieldReconciliationOut]
 
 # FDR
 class FDRCreate(BaseModel):
@@ -144,16 +252,6 @@ class OfficerOverrideRequest(BaseModel):
     adjusted_score: Optional[float] = None
     new_status: Optional[FDRStatus] = None
 
-# Bank Verification
-class BankVerifyRequest(BaseModel):
-    fdr_id: int
-    force_adapter: Optional[str] = None # "SIMULATED" or "MANUAL"
-
-class ManualVerificationRequest(BaseModel):
-    fdr_id: int
-    evidence_type: str # BRANCH_VISIT_REPORT, OFFICIAL_LETTER, EMAIL_CONFIRMATION
-    evidence_details: Dict[str, Any]
-    remarks: str
 
 # Demo Clock
 class DemoClockAdvance(BaseModel):

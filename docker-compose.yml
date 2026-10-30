@@ -114,6 +114,17 @@ services:
     depends_on:
       - backend
 
+  mock-bank:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deposafe-mock-bank
+    command: uvicorn backend.app.mock_bank_app:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - BANK_SIGNING_KEY=deposafe-simulated-sfms-secret-key-2026
+
 volumes:
   postgres_data:
   minio_data:

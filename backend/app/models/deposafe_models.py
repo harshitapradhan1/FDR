@@ -64,6 +64,13 @@ class BankVerificationStatus(str, enum.Enum):
     AVAILABLE_CHECKS_PASSED = "AVAILABLE_CHECKS_PASSED"
     NOT_CONFIRMED = "NOT_CONFIRMED"
 
+class VerificationMethod(str, enum.Enum):
+    OFFICIAL_PORTAL_VISIT = "OFFICIAL_PORTAL_VISIT"
+    BRANCH_VISIT = "BRANCH_VISIT"
+    REGISTERED_EMAIL_CONFIRMATION = "REGISTERED_EMAIL_CONFIRMATION"
+    PHONE_DISPATCH = "PHONE_DISPATCH"
+    WRITTEN_DISPATCH = "WRITTEN_DISPATCH"
+
 class BankType(str, enum.Enum):
     SCHEDULED_COMMERCIAL = "SCHEDULED_COMMERCIAL"
     PUBLIC_SECTOR = "PUBLIC_SECTOR"
@@ -246,13 +253,62 @@ class FieldProvenance(Base):
     ai_extracted_value = Column(String(500), nullable=True)
     bank_confirmed_value = Column(String(500), nullable=True)
     officer_verified_value = Column(String(500), nullable=True)
+
+    # Source Timestamps (Dual-Truth Four-Source Ledger)
+    submitted_at = Column(DateTime, nullable=True)
+    ai_extracted_at = Column(DateTime, nullable=True)
+    bank_confirmed_at = Column(DateTime, nullable=True)
+    officer_verified_at = Column(DateTime, nullable=True)
+
+    # Source Actors
+    submitted_by = Column(String(100), nullable=True)
+    ai_extracted_by = Column(String(100), nullable=True)
+    bank_confirmed_by = Column(String(100), nullable=True)
+    officer_verified_by = Column(String(100), nullable=True)
+
     status = Column(SQLEnum(ProvenanceLevel), default=ProvenanceLevel.SUBMITTED, nullable=False)
     ai_confidence = Column(Float, default=1.0)
     bounding_box = Column(JSON, nullable=True)
     mismatch_reason = Column(Text, nullable=True)
+    conflicts = Column(JSON, default=list)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     fdr = relationship("FDR", back_populates="provenance_fields")
+
+class ProvenanceLedgerEntry(Base):
+    __tablename__ = "provenance_ledger"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fdr_id = Column(Integer, ForeignKey("fdr_records.id"), nullable=False)
+    field_name = Column(String(100), nullable=False)
+    source = Column(SQLEnum(ProvenanceLevel), nullable=False)
+    value = Column(String(500), nullable=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    actor_name = Column(String(255), nullable=True)
+    actor_role = Column(String(100), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    confidence = Column(Float, default=1.0)
+    bounding_box = Column(JSON, nullable=True)
+    evidence_ref = Column(String(255), nullable=True)
+    remarks = Column(Text, nullable=True)
+
+    fdr = relationship("FDR", backref="provenance_ledger_entries")
+
+class VerificationQueueItem(Base):
+    __tablename__ = "verification_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fdr_id = Column(Integer, ForeignKey("fdr_records.id"), nullable=False)
+    status = Column(String(50), default="QUEUED")  # QUEUED, RETRYING, COMPLETED, ROUTED_MANUAL
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    last_error = Column(Text, nullable=True)
+    scenario = Column(String(50), nullable=True)
+    next_retry_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    fdr = relationship("FDR")
 
 class CorrectionRecord(Base):
     __tablename__ = "correction_records"

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from backend.app.core.config import settings
 from backend.app.core.database import Base, engine, SessionLocal
-from backend.app.api import auth, fdrs, institutions, compliance, democlock, graph, workload, audit, evaluation
+from backend.app.api import auth, fdrs, institutions, compliance, democlock, graph, workload, audit, evaluation, mock_bank
 from backend.app.services.seed_service import seed_database_if_empty
 
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,7 @@ app.include_router(graph.router, prefix=settings.API_V1_STR)
 app.include_router(workload.router, prefix=settings.API_V1_STR)
 app.include_router(audit.router, prefix=settings.API_V1_STR)
 app.include_router(evaluation.router, prefix=settings.API_V1_STR)
+app.include_router(mock_bank.router, prefix=settings.API_V1_STR)
 
 # Direct root-level route aliases for SIH prompt specifications:
 # POST /auth/login, /institutions, GET /institutions, POST /fdr/upload, GET /fdr/{id}, GET /fdr
@@ -45,6 +46,7 @@ app.include_router(auth.router, prefix="")
 app.include_router(institutions.router, prefix="")
 app.include_router(fdrs.router, prefix="/fdrs")
 app.include_router(fdrs.router, prefix="/fdr")
+app.include_router(mock_bank.router, prefix="")
 
 @app.on_event("startup")
 def startup_event():

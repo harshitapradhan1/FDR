@@ -36,3 +36,4 @@ field_patterns:
     regex: "(Pledged\\s*(?:under\\s*lien)?\\s*(?:jointly)?\\s*to\\s*Regional\\s*Officer.*?(?:AICTE|Council).*?\\.)"
     expected_bbox: [50, 270, 500, 45]
 confidence_baseline: 0.95
+

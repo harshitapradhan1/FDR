@@ -119,3 +119,4 @@ def words_to_amount_approx(words: str) -> Optional[float]:
     
     total += current
     return total if total > 0 else None
+

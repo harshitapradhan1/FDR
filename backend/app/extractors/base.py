@@ -29,3 +29,4 @@ class BaseExtractor(ABC):
     def extract(self, text: str, layout_schema: Dict[str, Any]) -> ExtractedDocumentFields:
         """Extract structured fields from text using layout schema."""
         pass
+

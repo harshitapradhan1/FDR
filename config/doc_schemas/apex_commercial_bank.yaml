@@ -35,3 +35,4 @@ field_patterns:
     regex: "(Lien\\s*noted\\s*in\\s*favour\\s*of\\s*Regional\\s*Officer.*?(?:AICTE).*?\\.)"
     expected_bbox: [50, 265, 500, 45]
 confidence_baseline: 0.94
+

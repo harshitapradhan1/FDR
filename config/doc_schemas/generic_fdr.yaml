@@ -36,3 +36,4 @@ field_patterns:
     regex: "(Pledged.*?Regional\\s*Officer.*?(?:AICTE).*?\\.)"
     expected_bbox: [120, 200, 400, 40]
 confidence_baseline: 0.82
+

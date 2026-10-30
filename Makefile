@@ -37,6 +37,12 @@ test:
 demo:
 	PYTHONPATH=. backend/venv/bin/python3 scripts/demo_runner.py
 
+demo-phase5:
+	PYTHONPATH=. backend/venv/bin/python3 scripts/demo_phase5_verification.py
+
+benchmark-verification:
+	PYTHONPATH=. backend/venv/bin/python3 scripts/benchmark_verification.py
+
 run-backend:
 	PYTHONPATH=. backend/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 

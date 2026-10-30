@@ -25,16 +25,17 @@
 ---
 
 ### 2. Test Verification Summary
-- Total Pytest Test Cases: **33 passed in 2.53s**
+- Total Pytest Test Cases: **38 passed in 2.60s**
 - Phase 1 State Machine Unit Tests: `backend/tests/test_state_machines.py` (5 passed)
 - Unit & Forensics Tests: `backend/tests/test_document_ai.py` (2 passed)
 - API & Provenance Tests: `backend/tests/test_api_and_workflows.py` (10 passed)
 - End-to-End Critical Flows: `backend/tests/test_e2e_flows.py` (3 passed)
 - Phase 3 Core Lifecycle Tests: `backend/tests/test_phase3_lifecycle.py` (8 passed)
 - Phase 4 AI Document Pipeline Tests: `backend/tests/test_phase4_ai_pipeline.py` (5 passed)
+- Phase 5 Dual-Truth Ledger Tests: `backend/tests/test_phase5_dual_truth.py` (5 passed)
 - Production Frontend Build: Next.js 14 App Router statically generated (5/5 routes passed)
-- Automated Demo Script: `scripts/demo_runner.py` executed cleanly via `make demo`
-- Database Migrations: Alembic migration `0001_phase1_foundation` applied and verified.
+- Automated Demo Scripts: `scripts/demo_runner.py` and `scripts/demo_phase5_verification.py` executed cleanly
+- Database Migrations: Alembic migrations `0001_phase1_foundation` and `0002_phase5_dual_truth` applied and verified.
 
 ---
 
@@ -115,5 +116,36 @@
     - **Macro Recall: 94.93%**
     - **Document Classification Accuracy: 95.73%**
     - **Average Processing Latency: 26.83 ms**
+
+---
+
+### 6. Phase 5 Completion: Dual-Truth (Four-Source) Ledger & Verification Orchestrator
+- **Dual-Truth Four-Source Ledger (`FieldProvenance`, `ProvenanceLedgerEntry`)**:
+  - Four independent truths tracked per field: `SUBMITTED`, `AI_EXTRACTED`, `BANK_CONFIRMED`, `OFFICER_VERIFIED` with source timestamps and actor names/roles.
+  - UI Badge system with statutory colors (`bg-blue-100 text-blue-800` for SUBMITTED, `bg-purple-100 text-purple-800` for AI_EXTRACTED, `bg-emerald-100 text-emerald-800` for BANK_CONFIRMED, `bg-amber-100 text-amber-800` for OFFICER_VERIFIED, `bg-rose-100 text-rose-800` for MISMATCH, `bg-slate-100 text-slate-800` for SOURCE_UNAVAILABLE).
+  - Conflict detection automatically transitions field status to `MISMATCH` with evidence breakdown.
+- **Enhanced `BankVerificationAdapter` & Standalone Simulated CBS Service**:
+  - `BankVerificationAdapter.verify(bank, branch_ifsc, fdr_number, amount, issue_date, maturity_date, scenario)` interface.
+  - Controllable simulated CBS service (`backend/app/services/simulated_bank_service.py`) and standalone FastAPI microservice (`backend/app/mock_bank_app.py`) running in `docker-compose.yml` (`mock-bank` on port 8001).
+  - All 7 behaviors verified: `SUCCESS` (AVAILABLE_CHECKS_PASSED), `MISMATCH`, `NOT_FOUND` (NOT_CONFIRMED), `TIMEOUT` (408), `RATE_LIMIT` (429), `DOWNTIME` (503), `SIGNED_RESPONSE` (HMAC-SHA256 authenticated response).
+  - Mandatory disclaimer watermark: `"SIMULATED, not a real bank verification"`.
+  - Comprehensive architectural specification: `docs/BANK_INTEGRATION_SPEC.md` documenting SFMS (`IFN 760/767/769`), NeSL e-BG, and ISO 20022 Open Banking integrations.
+- **Human-in-the-Loop Officer Manual Verification**:
+  - `POST /fdr/{fdr_id}/verify-manual` records manual verification evidence (method: `OFFICIAL_PORTAL_VISIT`, `BRANCH_VISIT`, `REGISTERED_EMAIL_CONFIRMATION`, etc., reference, remarks, evidence file).
+  - Elevates field provenance to `OFFICER_VERIFIED` (permanently distinct from `BANK_CONFIRMED`) and commits to append-only audit chain.
+- **Verification Orchestrator (`backend/app/services/verification_orchestrator.py`)**:
+  - Exponential backoff retry logic ($0.05s \times 2^k$) for transient network timeouts and rate limits.
+  - In-memory Circuit Breaker (`CLOSED` &rarr; `OPEN` after 3 failures &rarr; `HALF_OPEN` cooldown), preventing cascading gateway failures.
+  - `VERIFICATION_PENDING` queue (`verification_queue` table) with automated worker re-polling.
+  - Automated fallback routing: marks provenance as `SOURCE_UNAVAILABLE` and routes instrument to Officer Manual Review (`UNDER_SCRUTINY`).
+- **Cross-Document Reconciliation Engine (`backend/app/services/reconciliation_service.py`)**:
+  - Compares FDR Certificate, Bank Confirmation Letter, and Institution Declaration field-by-field (`fdr_number`, `amount`, `bank_name`, `issue_date`, `maturity_date`).
+  - Produces structured match/mismatch table with page numbers and visual bounding box coordinates (`bbox: [x0, y0, x1, y1]`).
+  - Endpoint: `GET /fdr/{fdr_id}/reconciliation` and `/cross-document-reconciliation`.
+  - Hero Demo Case (`BNB-DEL-HERO-1000`): flags critical maturity mismatch (`2032-11-15` on certificate vs `2026-11-15` on confirmation letter) with visual bboxes.
+- **Turnaround Metrics & Live Demo Runner**:
+  - Empirical verification turnaround benchmark (`scripts/benchmark_verification.py` &rarr; `docs/metrics/verification.md`): Mean latency **2.24 ms**, P50 **2.07 ms**, P90 **2.52 ms**.
+  - Interactive terminal demo runner: `scripts/demo_phase5_verification.py` (`make demo-phase5`).
+
 
 

@@ -212,3 +212,4 @@ def test_field_correction_and_sample_logging():
         last_sample = json.loads(lines[-1])
         assert last_sample["field_name"] == "amount"
         assert last_sample["ground_truth_corrected_value"] == "3600000.0"
+

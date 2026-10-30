@@ -15,14 +15,14 @@ from backend.app.models.deposafe_models import (
     User, UserRole, FDR, FDRDocument, FieldProvenance,
     BankVerificationRecord, Institution, FDRStatus,
     ProvenanceLevel, BankVerificationStatus, AuditLog,
-    CorrectionRecord
+    CorrectionRecord, ProvenanceLedgerEntry, VerificationQueueItem
 )
 from backend.app.schemas.deposafe_schemas import (
     FDRCreate, FDROut, FDRDetailOut, FDRRenewRequest,
     FDRReleaseRequest, FDRReleaseApproval, OfficerOverrideRequest,
     BankVerifyRequest, ManualVerificationRequest, ProvenanceVerifyRequest,
     IntegrityCheckOut, IntegrityCheckDocumentResult, SignedDownloadUrlOut,
-    FieldCorrectionRequest, FieldCorrectionOut
+    FieldCorrectionRequest, FieldCorrectionOut, PROVENANCE_BADGE_MAP
 )
 from backend.app.services.document_ai import extract_fdr_fields_from_pdf
 from backend.app.services.document_pipeline import run_document_ai_pipeline, persist_pipeline_results_to_db
@@ -30,6 +30,8 @@ from backend.app.services.risk_engine import compute_review_priority
 from backend.app.services.audit_service import record_audit_event
 from backend.app.rules.compliance_engine import get_active_rule, evaluate_fdr_compliance
 from backend.app.adapters.bank_adapter import SimulatedBankVerificationAdapter, ManualVerificationAdapter
+from backend.app.services.verification_orchestrator import VerificationOrchestrator, bank_circuit_breaker
+from backend.app.services.reconciliation_service import CrossDocumentReconciler
 from backend.app.services.document_service import (
     validate_and_scan_file, compute_file_sha256, generate_document_identifier,
     create_signed_download_token, verify_signed_download_token
@@ -747,6 +749,14 @@ def check_single_document_integrity(
 # --------------------------------------------------------------------------
 # 8. Human-in-the-Loop Actions & Bank Verification
 # --------------------------------------------------------------------------
+@router.get("/circuit-breaker/status")
+def get_circuit_breaker_status():
+    """Returns live telemetry of the Core Banking Integration Circuit Breaker."""
+    return {
+        "circuit_breaker": bank_circuit_breaker.get_metrics(),
+        "disclaimer": "SIMULATED, not a real bank verification"
+    }
+
 @router.post("/{fdr_id}/verify-bank")
 def verify_bank_details(
     fdr_id: int,
@@ -754,52 +764,30 @@ def verify_bank_details(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """
+    Executes resilient Bank Verification through VerificationOrchestrator:
+    - Retries transient timeouts / rate-limits with exponential backoff.
+    - Prevents cascade failures via Circuit Breaker pattern.
+    - Updates Dual-Truth Four-Source Ledger and Field Provenance.
+    - Routes to Officer Review with SOURCE_UNAVAILABLE if core gateway is down.
+    """
     fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
 
-    institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
+    # Scoped access validation
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to FDR record outside your institution")
 
-    # Bank Verification Adapter pattern
-    adapter = SimulatedBankVerificationAdapter()
-    result = adapter.verify_instrument(
-        bank_name=fdr.bank_name,
-        fdr_number=fdr.fdr_number,
-        ifsc_code=fdr.ifsc_code,
-        expected_amount=fdr.amount,
-        expected_holder=institution.society_or_trust_name
-    )
-
-    bank_status = BankVerificationStatus.AVAILABLE_CHECKS_PASSED if result["status"] == "AVAILABLE_CHECKS_PASSED" else BankVerificationStatus.NOT_CONFIRMED
-
-    rec = BankVerificationRecord(
+    # Execute through VerificationOrchestrator
+    orchestration_res = VerificationOrchestrator.execute_verification(
         fdr_id=fdr.id,
-        adapter_used=result["adapter"],
-        verification_status=bank_status,
-        api_reference_id=result["api_reference_id"],
-        watermark_notice=result["watermark"],
-        verified_by=current_user.id,
-        remarks=result["message"]
+        db=db,
+        scenario=req.scenario,
+        actor_id=current_user.id
     )
-    db.add(rec)
 
-    # Update provenance BANK_CONFIRMED
-    for prov in fdr.provenance_fields:
-        if bank_status == BankVerificationStatus.AVAILABLE_CHECKS_PASSED:
-            if prov.field_name == "amount" and result.get("bank_confirmed_amount") is not None:
-                prov.bank_confirmed_value = str(result["bank_confirmed_amount"])
-                prov.status = ProvenanceLevel.BANK_CONFIRMED
-            elif prov.field_name == "fdr_number":
-                prov.bank_confirmed_value = result.get("bank_fdr_number", fdr.fdr_number)
-                prov.status = ProvenanceLevel.BANK_CONFIRMED
-        else:
-            if prov.field_name in ["amount", "fdr_number"]:
-                prov.status = ProvenanceLevel.MISMATCH
-                prov.mismatch_reason = "Bank core banking records did not confirm instrument validity."
-
-    db.commit()
-
-    # Re-evaluate risk
+    institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
     active_rule = get_active_rule(db)
     comp_eval = evaluate_fdr_compliance(fdr, institution, active_rule)
     risk_info = compute_review_priority(db, fdr, institution, comp_eval)
@@ -807,31 +795,21 @@ def verify_bank_details(
     fdr.review_priority_score = risk_info["review_priority_score"]
     fdr.review_priority_level = risk_info["review_priority_level"]
     fdr.review_flags = risk_info["flags"]
-    if comp_eval["overall_passed"] and bank_status == BankVerificationStatus.AVAILABLE_CHECKS_PASSED:
-        fdr.status = FDRStatus.COMPLIANT
-    else:
-        fdr.status = FDRStatus.NON_COMPLIANT
     db.commit()
 
-    record_audit_event(
-        db=db,
-        event_type="BANK_VERIFICATION_PERFORMED",
-        entity_type="FDR",
-        entity_id=str(fdr.id),
-        actor_id=current_user.id,
-        actor_role=current_user.role.value,
-        payload={
-            "adapter": result["adapter"],
-            "verification_status": bank_status.value,
-            "watermark": result["watermark"],
-            "api_ref": result["api_reference_id"]
-        }
-    )
-
     return {
-        "verification_result": result,
-        "watermark_notice": result["watermark"],
-        "wording": result["wording"],
+        "success": orchestration_res.get("success", False),
+        "fdr_id": fdr.id,
+        "fdr_number": fdr.fdr_number,
+        "verification_status": orchestration_res.get("verification_status"),
+        "wording": orchestration_res.get("wording"),
+        "diffs": orchestration_res.get("diffs", {}),
+        "api_reference_id": orchestration_res.get("api_reference_id"),
+        "signature": orchestration_res.get("signature"),
+        "watermark_notice": orchestration_res.get("watermark"),
+        "simulated": True,
+        "message": orchestration_res.get("message") or orchestration_res.get("reason"),
+        "circuit_breaker": orchestration_res.get("circuit_breaker"),
         "review_priority": risk_info,
         "new_status": fdr.status.value
     }
@@ -844,61 +822,197 @@ def record_manual_bank_verification(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role([UserRole.VERIFICATION_OFFICER, UserRole.REGIONAL_OFFICER, UserRole.SYSTEM_ADMIN]))
 ):
+    """
+    Officer manual verification recording when automated bank feeds are unavailable:
+    - Elevates field provenance to OFFICER_VERIFIED (clearly distinct from BANK_CONFIRMED).
+    - Preserves evidence type, reference number, and remarks in immutable audit trail.
+    """
     fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
 
-    institution = db.query(Institution).filter(Institution.id == fdr.institution_id).first()
+    method = req.method or req.evidence_type or "OFFICIAL_PORTAL_VISIT"
+    ref_id = req.reference_id or f"MAN-VERIF-{fdr.id}-{datetime.utcnow().strftime('%Y%m%d')}"
+    remarks = req.remarks or f"Verified manually by officer {current_user.full_name} via {method}"
+    now = datetime.utcnow()
 
-    adapter = ManualVerificationAdapter(
-        evidence_type=req.evidence_type,
-        evidence_details=req.evidence_details,
-        officer_name=current_user.full_name
-    )
-    result = adapter.verify_instrument(
-        bank_name=fdr.bank_name,
-        fdr_number=fdr.fdr_number,
-        ifsc_code=fdr.ifsc_code,
-        expected_amount=fdr.amount,
-        expected_holder=institution.society_or_trust_name
-    )
-
+    # Record BankVerificationRecord as OFFICER_MANUAL_VERIFICATION
     rec = BankVerificationRecord(
         fdr_id=fdr.id,
-        adapter_used=result["adapter"],
+        adapter_used="OFFICER_MANUAL_VERIFICATION",
         verification_status=BankVerificationStatus.AVAILABLE_CHECKS_PASSED,
-        api_reference_id=result["api_reference_id"],
-        watermark_notice=result["watermark"],
-        manual_evidence_type=req.evidence_type,
-        manual_evidence_details=req.evidence_details,
+        api_reference_id=ref_id,
+        watermark_notice="OFFICIAL OFFICER VERIFICATION RECORD - MANUAL PROVENANCE",
+        manual_evidence_type=method,
+        manual_evidence_details={
+            "reference_id": ref_id,
+            "remarks": remarks,
+            "officer_name": current_user.full_name,
+            "evidence_document_id": req.evidence_document_id,
+            "verified_fields": req.verified_fields
+        },
         verified_by=current_user.id,
-        remarks=req.remarks
+        verified_at=now,
+        remarks=remarks
     )
     db.add(rec)
 
-    for prov in fdr.provenance_fields:
-        if prov.field_name in ["amount", "fdr_number"]:
-            prov.bank_confirmed_value = f"Manually verified via {req.evidence_type}"
-            prov.status = ProvenanceLevel.BANK_CONFIRMED
+    # Update Dual-Truth Provenance strictly as OFFICER_VERIFIED (distinct from BANK_CONFIRMED)
+    prov_records = db.query(FieldProvenance).filter(FieldProvenance.fdr_id == fdr.id).all()
+    prov_map = {p.field_name: p for p in prov_records}
 
-    fdr.status = FDRStatus.COMPLIANT
+    field_updates = req.verified_fields or {
+        "fdr_number": fdr.fdr_number,
+        "amount": str(fdr.amount),
+        "bank_name": fdr.bank_name,
+        "maturity_date": fdr.maturity_date.isoformat() if fdr.maturity_date else None,
+        "issue_date": fdr.issue_date.isoformat() if fdr.issue_date else None
+    }
+
+    for f_name, f_val in field_updates.items():
+        p = prov_map.get(f_name)
+        if not p:
+            p = FieldProvenance(fdr_id=fdr.id, field_name=f_name, submitted_value=str(f_val))
+            db.add(p)
+            prov_map[f_name] = p
+
+        p.officer_verified_value = str(f_val)
+        p.officer_verified_at = now
+        p.officer_verified_by = f"Officer {current_user.full_name} ({current_user.designation or 'Verification Officer'})"
+        p.status = ProvenanceLevel.OFFICER_VERIFIED
+        p.mismatch_reason = f"Manual evidence validated via {method} (Ref: {ref_id})"
+        p.conflicts = []
+
+        # Append to Provenance Ledger
+        ledger_entry = ProvenanceLedgerEntry(
+            fdr_id=fdr.id,
+            field_name=f_name,
+            source=ProvenanceLevel.OFFICER_VERIFIED,
+            value=str(f_val),
+            actor_id=current_user.id,
+            actor_name=current_user.full_name,
+            actor_role=current_user.role.value,
+            timestamp=now,
+            confidence=1.0,
+            evidence_ref=ref_id,
+            remarks=remarks
+        )
+        db.add(ledger_entry)
+
+    fdr.status = FDRStatus.ACTIVE
     db.commit()
 
     record_audit_event(
         db=db,
-        event_type="MANUAL_VERIFICATION_RECORDED",
+        event_type="OFFICER_MANUAL_VERIFICATION_RECORDED",
         entity_type="FDR",
         entity_id=str(fdr.id),
         actor_id=current_user.id,
         actor_role=current_user.role.value,
         payload={
-            "evidence_type": req.evidence_type,
-            "evidence_details": req.evidence_details,
-            "remarks": req.remarks
+            "method": method,
+            "reference_id": ref_id,
+            "officer_name": current_user.full_name,
+            "remarks": remarks,
+            "evidence_document_id": req.evidence_document_id
         }
     )
 
-    return {"message": "Manual verification evidence recorded successfully.", "result": result}
+    return {
+        "success": True,
+        "message": f"Officer manual verification successfully recorded. Provenance elevated to OFFICER_VERIFIED (Ref: {ref_id}).",
+        "provenance_status": ProvenanceLevel.OFFICER_VERIFIED.value,
+        "reference_id": ref_id,
+        "method": method,
+        "verified_by": current_user.full_name
+    }
+
+
+@router.get("/{fdr_id}/cross-document-reconciliation")
+@router.get("/{fdr_id}/reconciliation")
+def get_cross_document_reconciliation(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Cross-document reconciliation: compares FDR, bank confirmation letter,
+    institution declaration, and renewal instruments field by field.
+    Produces a match/mismatch matrix with evidence references and bounding boxes.
+    """
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    # Scoped access validation
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to FDR record outside your institution")
+
+    reconciliation = CrossDocumentReconciler.reconcile_fdr_documents(fdr_id=fdr.id, db=db)
+    return reconciliation
+
+
+@router.get("/{fdr_id}/provenance-ledger")
+def get_provenance_ledger(
+    fdr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns the Dual-Truth Four-Source Ledger:
+    - Side-by-side values from SUBMITTED, AI_EXTRACTED, BANK_CONFIRMED, OFFICER_VERIFIED.
+    - Timestamps, actors, conflict explanations, and UI badge colors.
+    """
+    fdr = db.query(FDR).filter(FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if current_user.role == UserRole.INSTITUTION_USER and current_user.institution_id != fdr.institution_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to FDR record outside your institution")
+
+    prov_records = db.query(FieldProvenance).filter(FieldProvenance.fdr_id == fdr.id).all()
+    ledger_history = db.query(ProvenanceLedgerEntry).filter(ProvenanceLedgerEntry.fdr_id == fdr.id).order_by(ProvenanceLedgerEntry.timestamp.desc()).all()
+
+    provenance_fields = []
+    for p in prov_records:
+        style = PROVENANCE_BADGE_MAP.get(p.status.value)
+        provenance_fields.append({
+            "id": p.id,
+            "field_name": p.field_name,
+            "submitted_value": p.submitted_value,
+            "ai_extracted_value": p.ai_extracted_value,
+            "bank_confirmed_value": p.bank_confirmed_value,
+            "officer_verified_value": p.officer_verified_value,
+            "submitted_at": p.submitted_at.isoformat() if p.submitted_at else None,
+            "ai_extracted_at": p.ai_extracted_at.isoformat() if p.ai_extracted_at else None,
+            "bank_confirmed_at": p.bank_confirmed_at.isoformat() if p.bank_confirmed_at else None,
+            "officer_verified_at": p.officer_verified_at.isoformat() if p.officer_verified_at else None,
+            "submitted_by": p.submitted_by,
+            "ai_extracted_by": p.ai_extracted_by,
+            "bank_confirmed_by": p.bank_confirmed_by,
+            "officer_verified_by": p.officer_verified_by,
+            "status": p.status.value,
+            "ai_confidence": p.ai_confidence,
+            "bounding_box": p.bounding_box,
+            "mismatch_reason": p.mismatch_reason,
+            "conflicts": p.conflicts or [],
+            "badge_style": {
+                "source": style.source,
+                "label": style.label,
+                "bg_class": style.bg_class,
+                "text_class": style.text_class,
+                "border_class": style.border_class,
+                "hex_color": style.hex_color
+            } if style else None
+        })
+
+    return {
+        "fdr_id": fdr.id,
+        "fdr_number": fdr.fdr_number,
+        "institution_id": fdr.institution_id,
+        "provenance_fields": provenance_fields,
+        "mutation_history_count": len(ledger_history)
+    }
 
 
 @router.post("/{fdr_id}/verify-field")

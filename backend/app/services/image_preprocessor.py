@@ -81,3 +81,4 @@ def preprocess_document_image(image: np.ndarray) -> Dict[str, Any]:
         "skew_angle_detected": angle,
         "preprocessing_applied": ["deskew", "denoise", "otsu_binarize"]
     }
+

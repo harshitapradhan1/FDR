@@ -250,3 +250,4 @@ def validate_extracted_fields(
         "total_checks_count": len(checks),
         "checks": checks
     }
+
